@@ -1,0 +1,56 @@
+# TrackFlow local stack.
+# Step 1: MySQL + a one-off Flyway runner. Backend and frontend are added in Step 6.
+#
+#   docker compose up -d mysql
+#   docker compose --profile tools run --rm flyway migrate
+#
+name: trackflow
+
+x-db-env: &db-env
+  MYSQL_DATABASE: ${MYSQL_DATABASE:-trackflow}
+  MYSQL_USER: ${MYSQL_USER:-trackflow}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:-trackflow_local}
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: trackflow-mysql
+    environment:
+      <<: *db-env
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_local}
+      TZ: UTC
+    command:
+      - --default-time-zone=+00:00
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # TCP ping only succeeds once init is done (the init server runs without networking).
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Runs the same migrations the backend will run on start-up. The demo
+  # location is included here because this is the local stack.
+  flyway:
+    image: flyway/flyway:10
+    profiles: ["tools"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-trackflow}?allowPublicKeyRetrieval=true&useSSL=false
+      FLYWAY_USER: ${MYSQL_USER:-trackflow}
+      FLYWAY_PASSWORD: ${MYSQL_PASSWORD:-trackflow_local}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql/migration,filesystem:/flyway/sql/demo
+      FLYWAY_CONNECT_RETRIES: "10"
+    volumes:
+      - ./backend/src/main/resources/db:/flyway/sql:ro
+
+volumes:
+  mysql-data:
