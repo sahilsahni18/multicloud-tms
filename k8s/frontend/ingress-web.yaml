@@ -1,0 +1,18 @@
+# Everything that is not an API path goes to the web app (longest prefix wins,
+# so /api etc. still reach the backend through trackflow-api).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trackflow-web
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http

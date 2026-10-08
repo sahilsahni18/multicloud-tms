@@ -1,0 +1,16 @@
+# The web app (nginx serving the SPA and proxying /api to the backend).
+# Used on kind; in the cloud the SPA is served from S3 + CloudFront and
+# Azure Static Web Apps instead (see infra/).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: trackflow
+    includeSelectors: false
+
+resources:
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - frontend-pdb.yaml
+  - ingress-web.yaml

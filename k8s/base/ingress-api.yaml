@@ -1,0 +1,50 @@
+# Routes the API, health checks and API docs to the backend. The ingress
+# class is set per overlay (nginx on kind, ALB on EKS, the AKS add-on on Azure).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trackflow-api
+  annotations:
+    # Deployment status is streamed with Server-Sent Events.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  name: http
+          - path: /actuator
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  name: http
+          - path: /v3/api-docs
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  name: http
+          - path: /swagger-ui
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  name: http
+          - path: /swagger-ui.html
+            pathType: Exact
+            backend:
+              service:
+                name: backend
+                port:
+                  name: http

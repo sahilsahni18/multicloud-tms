@@ -1,0 +1,48 @@
+# Rendered at container start: ${BACKEND_URL} comes from the environment.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # API, health, metrics and API docs go to the backend.
+    location ~ ^/(api/|actuator|swagger-ui|v3/api-docs) {
+        proxy_pass ${BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        # Server-Sent Events (deployment status) must not be buffered.
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+
+    # Fingerprinted bundles never change: cache for a year.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    # The app shell must always be revalidated so new deployments show up.
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+    }
+
+    # Client-side routes (/tickets/12, /board ...) all serve the SPA.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

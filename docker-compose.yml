@@ -1,9 +1,9 @@
-# TrackFlow local stack.
-# Step 1: MySQL + a one-off Flyway runner. Backend and frontend are added in Step 6.
+# TrackFlow local stack: MySQL + backend + frontend.
 #
-#   docker compose up -d mysql
-#   docker compose --profile tools run --rm flyway migrate
+#   docker compose up -d --build     then open http://localhost:3000
+#   docker compose down              (add -v to also wipe the database)
 #
+# Override ports or credentials in .env (see .env.example).
 name: trackflow
 
 x-db-env: &db-env
@@ -35,8 +35,42 @@ services:
       retries: 30
       start_period: 20s
 
-  # Runs the same migrations the backend will run on start-up. The demo
-  # location is included here because this is the local stack.
+  backend:
+    build: ./backend
+    image: trackflow-backend:local
+    container_name: trackflow-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # local = demo users + dev JWT key + non-secure cookie (plain http)
+      SPRING_PROFILES_ACTIVE: local
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-trackflow}
+      DB_USERNAME: ${MYSQL_USER:-trackflow}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-trackflow_local}
+      APP_CLOUD: docker
+      APP_REGION: local
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"   # Swagger: http://localhost:8080/swagger-ui.html
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    image: trackflow-frontend:local
+    container_name: trackflow-frontend
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "${FRONTEND_PORT:-3000}:8080"
+    restart: unless-stopped
+
+  # Runs the migrations without the backend (debugging the schema):
+  #   docker compose --profile tools run --rm flyway migrate
   flyway:
     image: flyway/flyway:10
     profiles: ["tools"]

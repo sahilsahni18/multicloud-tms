@@ -1,0 +1,35 @@
+name: Kubernetes manifests
+
+on:
+  push:
+    branches: [main]
+    paths: ['k8s/**', '.github/workflows/k8s-ci.yml']
+  pull_request:
+    paths: ['k8s/**', '.github/workflows/k8s-ci.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Render and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # Every overlay must render, and every object must match the Kubernetes schema.
+      - name: Render overlays
+        run: |
+          mkdir -p rendered
+          for overlay in k8s/overlays/*/; do
+            name=$(basename "$overlay")
+            echo "Rendering $name"
+            kubectl kustomize "$overlay" > "rendered/$name.yaml"
+          done
+
+      - name: Validate against Kubernetes schemas
+        run: |
+          docker run --rm -v "$PWD/rendered:/rendered:ro" ghcr.io/yannh/kubeconform:latest \
+            -strict -summary /rendered

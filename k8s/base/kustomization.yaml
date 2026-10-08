@@ -1,0 +1,18 @@
+# Backend API: what runs in every cluster (kind, EKS, AKS).
+# Overlays add the namespace, image registry/tag, database URL and the
+# backend-secrets Secret (never committed: generated locally or created by CD).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: trackflow
+    includeSelectors: false
+
+resources:
+  - backend-configmap.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - backend-hpa.yaml
+  - backend-pdb.yaml
+  - ingress-api.yaml
