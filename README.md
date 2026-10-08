@@ -11,8 +11,8 @@ Everything is built and proven locally first; the cloud is touched only on Day 3
 | 1 | 1 | Repo scaffold + MySQL schema (Flyway) + ER diagram | Migrations apply clean on MySQL 8; constraints reject bad data | ✅ |
 | 1 | 2 | Spring Boot skeleton + JWT security (register, login, refresh rotation, logout, roles) | Auth integration tests pass (Testcontainers) | ✅ |
 | 1 | 3 | Domain APIs: users, projects, tickets (workflow + access policy), comments, history/activity, search, dashboard, deployments API (simulated runner) | Every endpoint in Swagger; service tests green | ✅ |
-| 2 | 4 | React shell: login, silent token refresh, protected routes, role-based sidebar | Each role sees the right menu | ⬜ |
-| 2 | 5 | Pages: dashboard, projects, tickets, ticket detail, users/roles, profile, reports, settings, Deployment Portal + history | Full ticket lifecycle from the UI | ⬜ |
+| 2 | 4 | React shell: login, silent token refresh, protected routes, role-based sidebar | Each role sees the right menu | ✅ |
+| 2 | 5 | Pages: dashboard, projects, tickets, ticket detail, users/roles, profile, reports, settings, Deployment Portal + history | Full ticket lifecycle from the UI | ✅ |
 | 2 | 6 | Dockerfiles + full Compose stack, Kustomize manifests on kind, GitHub Actions CI | `docker compose up` works; app runs on kind; CI green | ⬜ |
 | 3 | 7 | OpenTofu modules: AWS (VPC, EKS, ECR, RDS, Route 53, S3 + CloudFront), Azure (RG, AKS, ACR, MySQL Flexible, Traffic Manager, Static Web Apps) | `tofu plan` clean for both clouds | ⬜ |
 | 3 | 8 | Apply both clouds, CD to 4 clusters, Traffic Manager failover | Killing a region fails over in < 2 min | ⬜ |
@@ -35,7 +35,13 @@ Everything is built and proven locally first; the cloud is touched only on Day 3
 │   └── src/main/resources/db/
 │       ├── migration/      Flyway schema (all environments)
 │       └── demo/           Flyway demo seed (local/dev/QA only)
-├── frontend/               React 18 + Vite + MUI            (Step 4)
+├── frontend/               React 19 + TypeScript + Vite
+│   └── src/
+│       ├── api/            axios client (silent refresh), RTK Query endpoints, DTO types
+│       ├── app/            store, hooks, role-based navigation map
+│       ├── features/auth/  login, register, session slice, route guards
+│       ├── pages/          dashboard, tickets, projects, reports, admin/*, profile, settings
+│       └── components/     layout, labels, dialogs, pickers
 ├── k8s/                    Kustomize base + overlays         (Step 6)
 ├── infra/                  OpenTofu modules + env stacks     (Step 7)
 ├── .github/workflows/      CI / CD / provisioning            (Steps 6, 8, 9)
@@ -63,12 +69,30 @@ The backend runs Flyway on start-up (schema + demo data in the `local` profile),
 
 MySQL listens on `localhost:3306`, database `trackflow`, user `trackflow` / `trackflow_local` (override in `.env`, see `.env.example`). To apply migrations without the backend: `docker compose --profile tools run --rm flyway migrate`.
 
+Then the frontend (Node 20+), in a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev                     # http://localhost:5173, proxies /api to localhost:8080
+```
+
+Sign in with one of the demo accounts below (the login page lists them in dev mode). To point the dev server at a backend on another port: `VITE_PROXY_TARGET=http://localhost:8081 npm run dev`.
+
 ### Tests
 
 ```bash
 cd backend
 ./mvnw verify                   # unit + integration tests (Testcontainers starts its own MySQL)
+
+cd frontend
+npm run lint && npm test        # ESLint + Vitest / Testing Library
+npm run build                   # type-check and production bundle in dist/
 ```
+
+### Frontend stack
+
+React 19, TypeScript, Vite, React Router, Redux Toolkit + RTK Query, Axios, MUI (restyled: system fonts, flat, one blue), Vitest + Testing Library, ESLint. The access token is kept in memory only; the refresh token is an httpOnly cookie, and a 401 triggers one shared refresh call before the request is retried. Menus and routes come from one role map (`src/app/navigation.ts`); the API enforces the same rules.
 
 Coverage report: `backend/target/site/jacoco/index.html`.
 
