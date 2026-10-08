@@ -5,7 +5,8 @@ export interface NavItem {
   path: string;
   /** Empty = every signed-in user. */
   roles: RoleName[];
-  section: 'main' | 'admin' | 'account';
+  /** main/admin render in the sidebar; account renders in the avatar menu. */
+  section: 'main' | 'planning' | 'admin' | 'account';
 }
 
 /**
@@ -14,9 +15,10 @@ export interface NavItem {
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/', roles: [], section: 'main' },
-  { label: 'Tickets', path: '/tickets', roles: [], section: 'main' },
-  { label: 'Projects', path: '/projects', roles: [], section: 'main' },
-  { label: 'Reports', path: '/reports', roles: ['ADMIN', 'PROJECT_MANAGER'], section: 'main' },
+  { label: 'Board', path: '/board', roles: [], section: 'planning' },
+  { label: 'Tickets', path: '/tickets', roles: [], section: 'planning' },
+  { label: 'Projects', path: '/projects', roles: [], section: 'planning' },
+  { label: 'Reports', path: '/reports', roles: ['ADMIN', 'PROJECT_MANAGER'], section: 'planning' },
   { label: 'Users', path: '/admin/users', roles: ['ADMIN'], section: 'admin' },
   { label: 'Roles', path: '/admin/roles', roles: ['ADMIN'], section: 'admin' },
   { label: 'Deployments', path: '/admin/deployments', roles: ['ADMIN'], section: 'admin' },

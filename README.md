@@ -92,7 +92,7 @@ npm run build                   # type-check and production bundle in dist/
 
 ### Frontend stack
 
-React 19, TypeScript, Vite, React Router, Redux Toolkit + RTK Query, Axios, MUI (restyled: system fonts, flat, one blue), Vitest + Testing Library, ESLint. The access token is kept in memory only; the refresh token is an httpOnly cookie, and a 401 triggers one shared refresh call before the request is retried. Menus and routes come from one role map (`src/app/navigation.ts`); the API enforces the same rules.
+React 19, TypeScript, Vite, React Router, Redux Toolkit + RTK Query, Axios, MUI (restyled in an Atlassian-like style: system fonts, navy text, one blue, issue-type and priority icons, status lozenges, initials avatars), Vitest + Testing Library, ESLint. The Board page is a Kanban view per project: drag a card to another column to move the ticket through the workflow (the API rejects moves your role may not make). The access token is kept in memory only; the refresh token is an httpOnly cookie, and a 401 triggers one shared refresh call before the request is retried. Menus and routes come from one role map (`src/app/navigation.ts`); the API enforces the same rules.
 
 Coverage report: `backend/target/site/jacoco/index.html`.
 

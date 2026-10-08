@@ -11,16 +11,19 @@ import {
   useGetTimelineQuery,
 } from '../../api/api';
 import { errorMessage } from '../../api/http';
-import type { Comment, HistoryEntry } from '../../api/types';
+import type { Comment, HistoryEntry, TicketStatus } from '../../api/types';
+import { useCurrentUser } from '../../app/hooks';
 import { ErrorBanner, Loading } from '../../components/Feedback';
+import { StatusLabel } from '../../components/Labels';
+import UserAvatar from '../../components/UserAvatar';
 import { colors } from '../../theme';
 import { formatDate, formatDateTime, humanize, timeAgo } from '../../utils/format';
 
 function describeChange(h: HistoryEntry): React.ReactNode {
   const show = (v?: string) => {
-    if (!v) return 'none';
+    if (!v) return 'None';
     if (h.field === 'dueDate') return formatDate(v);
-    return h.field === 'status' || h.field === 'priority' || h.field === 'type' ? humanize(v) : v;
+    return h.field === 'priority' || h.field === 'type' ? humanize(v) : v;
   };
   switch (h.changeType) {
     case 'CREATED':
@@ -28,23 +31,27 @@ function describeChange(h: HistoryEntry): React.ReactNode {
     case 'ASSIGNED':
       return h.newValue ? (
         <>
-          assigned it to <b>{h.newValue}</b>
+          assigned the ticket to <b>{h.newValue}</b>
         </>
       ) : (
-        'removed the assignee'
+        'unassigned the ticket'
       );
     case 'STATUS_CHANGED':
       return (
         <>
-          moved it from <b>{show(h.oldValue)}</b> to <b>{show(h.newValue)}</b>
+          changed the status{' '}
+          {h.oldValue && <StatusLabel status={h.oldValue as TicketStatus} />}
+          <Box component="span" sx={{ mx: 0.75, color: 'text.secondary' }}>→</Box>
+          {h.newValue && <StatusLabel status={h.newValue as TicketStatus} />}
         </>
       );
     default:
       return h.field === 'description' ? (
-        'edited the description'
+        'updated the description'
       ) : (
         <>
-          changed {h.field === 'dueDate' ? 'due date' : h.field} from <b>{show(h.oldValue)}</b> to <b>{show(h.newValue)}</b>
+          changed the {h.field === 'dueDate' ? 'due date' : h.field} from <b>{show(h.oldValue)}</b> to{' '}
+          <b>{show(h.newValue)}</b>
         </>
       );
   }
@@ -57,136 +64,159 @@ function CommentItem({ comment }: { comment: Comment }) {
   const [remove] = useDeleteCommentMutation();
 
   return (
-    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, my: 1 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 1,
-          alignItems: 'baseline',
-          px: 1.5,
-          py: 0.75,
-          bgcolor: colors.subtle,
-          borderBottom: 1,
-          borderColor: 'divider',
-          fontSize: 13,
-        }}
-      >
-        <b>{comment.author.fullName}</b>
-        <Box component="span" sx={{ color: 'text.secondary' }} title={formatDateTime(comment.createdAt)}>
-          commented {timeAgo(comment.createdAt)}
-          {comment.editedAt && ' (edited)'}
-        </Box>
-        {comment.canModify && !editing && (
-          <Box sx={{ ml: 'auto', display: 'flex', gap: 1.5 }}>
-            <Link component="button" variant="body2" onClick={() => setEditing(true)}>
-              Edit
-            </Link>
-            <Link
-              component="button"
-              variant="body2"
-              color="error"
-              onClick={() => {
-                if (window.confirm('Delete this comment?')) remove({ id: comment.id, ticketId: comment.ticketId });
-              }}
-            >
-              Delete
-            </Link>
+    <Box sx={{ display: 'flex', gap: 1.5, py: 1.5 }}>
+      <UserAvatar name={comment.author.fullName} size={32} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', fontSize: 14 }}>
+          <Box component="span" sx={{ fontWeight: 600 }}>
+            {comment.author.fullName}
           </Box>
+          <Box component="span" sx={{ color: 'text.secondary', fontSize: 13 }} title={formatDateTime(comment.createdAt)}>
+            {timeAgo(comment.createdAt)}
+            {comment.editedAt && ' · edited'}
+          </Box>
+        </Box>
+        {editing ? (
+          <Box sx={{ mt: 1, display: 'grid', gap: 1 }}>
+            {editState.error && <Typography color="error" variant="body2">{errorMessage(editState.error)}</Typography>}
+            <TextField value={body} onChange={(e) => setBody(e.target.value)} multiline minRows={3} autoFocus />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="contained"
+                disabled={!body.trim() || editState.isLoading}
+                onClick={async () => {
+                  const ok = await edit({ id: comment.id, ticketId: comment.ticketId, body: body.trim() })
+                    .unwrap()
+                    .then(() => true)
+                    .catch(() => false);
+                  if (ok) setEditing(false);
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                variant="text"
+                sx={{ bgcolor: 'transparent' }}
+                onClick={() => {
+                  setBody(comment.body);
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </Box>
+          </Box>
+        ) : (
+          <>
+            <Typography sx={{ mt: 0.5, whiteSpace: 'pre-wrap', fontSize: 14, wordBreak: 'break-word' }}>{comment.body}</Typography>
+            {comment.canModify && (
+              <Box sx={{ display: 'flex', gap: 1.5, mt: 0.5 }}>
+                <Link component="button" variant="body2" color="text.secondary" onClick={() => setEditing(true)} sx={{ fontWeight: 500 }}>
+                  Edit
+                </Link>
+                <Link
+                  component="button"
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ fontWeight: 500 }}
+                  onClick={() => {
+                    if (window.confirm('Delete this comment?')) remove({ id: comment.id, ticketId: comment.ticketId });
+                  }}
+                >
+                  Delete
+                </Link>
+              </Box>
+            )}
+          </>
         )}
       </Box>
-      {editing ? (
-        <Box sx={{ p: 1.5, display: 'grid', gap: 1 }}>
-          {editState.error && <Typography color="error" variant="body2">{errorMessage(editState.error)}</Typography>}
-          <TextField value={body} onChange={(e) => setBody(e.target.value)} multiline minRows={3} autoFocus />
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="contained"
-              disabled={!body.trim() || editState.isLoading}
-              onClick={async () => {
-                const ok = await edit({ id: comment.id, ticketId: comment.ticketId, body: body.trim() })
-                  .unwrap()
-                  .then(() => true)
-                  .catch(() => false);
-                if (ok) setEditing(false);
-              }}
-            >
-              Save
-            </Button>
-            <Button
-              onClick={() => {
-                setBody(comment.body);
-                setEditing(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </Box>
-        </Box>
-      ) : (
-        <Typography sx={{ px: 1.5, py: 1, whiteSpace: 'pre-wrap', fontSize: 14 }}>{comment.body}</Typography>
-      )}
     </Box>
   );
 }
 
-/** Comments and field changes in one list, oldest first, with the comment box at the end. */
+/** Comments and field changes in one list, oldest first, with the comment box on top. */
 export default function Timeline({ ticketId, canComment }: { ticketId: number; canComment: boolean }) {
+  const me = useCurrentUser();
   const { data, error, isLoading } = useGetTimelineQuery(ticketId);
   const [addComment, addState] = useAddCommentMutation();
   const [body, setBody] = useState('');
+  const [focused, setFocused] = useState(false);
 
   return (
     <Box>
-      <Typography variant="h3" sx={{ mb: 1 }}>
+      <Typography variant="h3" sx={{ mb: 1.5 }}>
         Activity
       </Typography>
-      <ErrorBanner error={error} />
-      {isLoading && <Loading />}
-      {data?.map((entry) =>
-        entry.kind === 'COMMENT' && entry.comment ? (
-          <CommentItem key={`c${entry.comment.id}`} comment={entry.comment} />
-        ) : entry.change ? (
-          <Box
-            key={`h${entry.change.id}`}
-            sx={{ fontSize: 13, color: 'text.secondary', py: 0.5, pl: 1.5, borderLeft: 2, borderColor: 'divider', ml: 1 }}
-          >
-            <Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>
-              {entry.change.changedBy?.fullName ?? 'System'}
-            </Box>{' '}
-            {describeChange(entry.change)}{' '}
-            <span title={formatDateTime(entry.change.changedAt)}>· {timeAgo(entry.change.changedAt)}</span>
-          </Box>
-        ) : null,
-      )}
 
       {canComment && (
         <Box
           component="form"
-          sx={{ mt: 2, display: 'grid', gap: 1 }}
+          sx={{ display: 'flex', gap: 1.5, mb: 1 }}
           onSubmit={async (e: React.FormEvent) => {
             e.preventDefault();
             const ok = await addComment({ ticketId, body: body.trim() })
               .unwrap()
               .then(() => true)
               .catch(() => false);
-            if (ok) setBody('');
+            if (ok) {
+              setBody('');
+              setFocused(false);
+            }
           }}
         >
-          {addState.error && <Typography color="error" variant="body2">{errorMessage(addState.error)}</Typography>}
-          <TextField
-            placeholder="Leave a comment"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            multiline
-            minRows={3}
-          />
-          <Box>
-            <Button type="submit" variant="contained" disabled={!body.trim() || addState.isLoading}>
-              Comment
-            </Button>
+          <UserAvatar name={me?.fullName} size={32} />
+          <Box sx={{ flex: 1, display: 'grid', gap: 1 }}>
+            {addState.error && <Typography color="error" variant="body2">{errorMessage(addState.error)}</Typography>}
+            <TextField
+              placeholder="Add a comment…"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onFocus={() => setFocused(true)}
+              multiline
+              minRows={focused ? 3 : 1}
+            />
+            {(focused || body) && (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button type="submit" variant="contained" disabled={!body.trim() || addState.isLoading}>
+                  Save
+                </Button>
+                <Button
+                  variant="text"
+                  sx={{ bgcolor: 'transparent' }}
+                  onClick={() => {
+                    setBody('');
+                    setFocused(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Box>
+            )}
           </Box>
         </Box>
       )}
+
+      <ErrorBanner error={error} />
+      {isLoading && <Loading />}
+      {data &&
+        [...data].reverse().map((entry) =>
+          entry.kind === 'COMMENT' && entry.comment ? (
+            <CommentItem key={`c${entry.comment.id}`} comment={entry.comment} />
+          ) : entry.change ? (
+            <Box key={`h${entry.change.id}`} sx={{ display: 'flex', gap: 1.5, py: 1, alignItems: 'flex-start' }}>
+              <UserAvatar name={entry.change.changedBy?.fullName ?? 'System'} size={32} />
+              <Box sx={{ fontSize: 14, pt: 0.75, lineHeight: '20px' }}>
+                <Box component="span" sx={{ fontWeight: 600 }}>
+                  {entry.change.changedBy?.fullName ?? 'System'}
+                </Box>{' '}
+                {describeChange(entry.change)}
+                <Box component="span" sx={{ color: colors.muted, fontSize: 13, ml: 1 }} title={formatDateTime(entry.change.changedAt)}>
+                  {timeAgo(entry.change.changedAt)}
+                </Box>
+              </Box>
+            </Box>
+          ) : null,
+        )}
     </Box>
   );
 }

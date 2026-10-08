@@ -1,21 +1,47 @@
+import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
+import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
+import SearchIcon from '@mui/icons-material/Search';
+import SpaceDashboardOutlinedIcon from '@mui/icons-material/SpaceDashboardOutlined';
+import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import ButtonBase from '@mui/material/ButtonBase';
+import Divider from '@mui/material/Divider';
 import InputBase from '@mui/material/InputBase';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { navFor, primaryRole, type NavItem } from '../app/navigation';
 import { useCurrentUser } from '../app/hooks';
 import { signOut } from '../app/store';
+import NewTicketDialog from '../pages/tickets/NewTicketDialog';
 import { colors } from '../theme';
 import { humanize } from '../utils/format';
+import Logo from './Logo';
+import UserAvatar from './UserAvatar';
 
-const SIDEBAR_WIDTH = 208;
+const SIDEBAR_WIDTH = 232;
 
-const SECTION_TITLES: Record<NavItem['section'], string | null> = {
-  main: null,
+const ICONS: Record<string, React.ReactNode> = {
+  '/': <SpaceDashboardOutlinedIcon fontSize="small" />,
+  '/board': <ViewKanbanOutlinedIcon fontSize="small" />,
+  '/tickets': <FormatListBulletedIcon fontSize="small" />,
+  '/projects': <FolderOutlinedIcon fontSize="small" />,
+  '/reports': <AssessmentOutlinedIcon fontSize="small" />,
+  '/admin/users': <GroupOutlinedIcon fontSize="small" />,
+  '/admin/roles': <AdminPanelSettingsOutlinedIcon fontSize="small" />,
+  '/admin/deployments': <CloudUploadOutlinedIcon fontSize="small" />,
+};
+
+const SECTION_TITLES: Partial<Record<NavItem['section'], string>> = {
+  planning: 'Planning',
   admin: 'Administration',
-  account: 'Account',
 };
 
 function SidebarLink({ item }: { item: NavItem }) {
@@ -25,18 +51,38 @@ function SidebarLink({ item }: { item: NavItem }) {
       to={item.path}
       end={item.path === '/'}
       sx={{
-        display: 'block',
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
         px: 1.5,
-        py: 0.625,
+        height: 36,
         mx: 1,
-        borderRadius: 1,
+        borderRadius: '3px',
         fontSize: 14,
-        color: 'text.primary',
+        color: colors.muted,
         textDecoration: 'none',
-        '&:hover': { bgcolor: '#eaeef2' },
-        '&.active': { bgcolor: colors.blueBg, color: colors.blue, fontWeight: 600 },
+        '& svg': { color: colors.muted },
+        '&:hover': { bgcolor: colors.hover, color: colors.text },
+        '&.active': {
+          bgcolor: colors.blueBg,
+          color: colors.blue,
+          fontWeight: 500,
+          '& svg': { color: colors.blue },
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            left: 0,
+            top: 8,
+            bottom: 8,
+            width: 3,
+            borderRadius: '0 2px 2px 0',
+            bgcolor: colors.blue,
+          },
+        },
       }}
     >
+      {ICONS[item.path]}
       {item.label}
     </Box>
   );
@@ -46,19 +92,22 @@ export default function AppLayout() {
   const user = useCurrentUser();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const items = navFor(user?.roles ?? []);
   const role = primaryRole(user?.roles ?? []);
 
-  const sections = (['main', 'admin', 'account'] as const)
+  const sections = (['main', 'planning', 'admin'] as const)
     .map((section) => ({ section, items: items.filter((i) => i.section === section) }))
     .filter((s) => s.items.length > 0);
+  const accountItems = items.filter((i) => i.section === 'account');
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box
         component="header"
         sx={{
-          height: 48,
+          height: 56,
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
@@ -66,57 +115,93 @@ export default function AppLayout() {
           px: 2,
           borderBottom: 1,
           borderColor: 'divider',
+          bgcolor: '#fff',
         }}
       >
-        <Typography
-          component={NavLink}
-          to="/"
-          sx={{ fontWeight: 700, fontSize: 15, color: colors.blue, textDecoration: 'none', width: SIDEBAR_WIDTH - 16 }}
-        >
-          TrackFlow
-        </Typography>
-        <Box
-          component="form"
-          onSubmit={(e: React.FormEvent) => {
-            e.preventDefault();
-            navigate(`/tickets?q=${encodeURIComponent(search.trim())}`);
-          }}
-          sx={{ flex: 1, maxWidth: 360 }}
-        >
-          <InputBase
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tickets or jump to a key (TMS-4)"
-            inputProps={{ 'aria-label': 'Search tickets' }}
-            sx={{
-              width: '100%',
-              fontSize: 13,
-              px: 1,
-              py: 0.25,
-              border: 1,
-              borderColor: 'divider',
-              borderRadius: 1,
-              bgcolor: colors.subtle,
-            }}
-          />
+        <Box component={NavLink} to="/" sx={{ textDecoration: 'none', width: SIDEBAR_WIDTH - 32, display: 'flex' }}>
+          <Logo size={24} />
         </Box>
+        <Button variant="contained" onClick={() => setCreating(true)} sx={{ px: 1.5 }}>
+          Create
+        </Button>
+
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Typography variant="body2">
-            {user?.fullName}
-            {role && (
-              <Box component="span" sx={{ color: 'text.secondary', ml: 0.75 }}>
-                · {humanize(role)}
-              </Box>
-            )}
-          </Typography>
-          <Button
-            onClick={async () => {
-              await signOut();
-              navigate('/login');
+          <Box
+            component="form"
+            onSubmit={(e: React.FormEvent) => {
+              e.preventDefault();
+              navigate(`/tickets?q=${encodeURIComponent(search.trim())}`);
+            }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              width: 260,
+              px: 1,
+              height: 32,
+              border: 1,
+              borderColor: '#8590A2',
+              borderRadius: '3px',
+              '&:focus-within': { borderColor: colors.blue, boxShadow: `inset 0 0 0 1px ${colors.blue}` },
             }}
           >
-            Sign out
-          </Button>
+            <SearchIcon sx={{ fontSize: 18, color: colors.muted }} />
+            <InputBase
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search"
+              inputProps={{ 'aria-label': 'Search tickets' }}
+              sx={{ flex: 1, fontSize: 14 }}
+            />
+          </Box>
+          <ButtonBase
+            aria-label="Account menu"
+            onClick={(e) => setMenuAnchor(e.currentTarget)}
+            sx={{ borderRadius: '50%', '&:hover': { boxShadow: `0 0 0 3px ${colors.hover}` } }}
+          >
+            <UserAvatar name={user?.fullName} size={32} tooltip={false} />
+          </ButtonBase>
+          <Menu
+            anchorEl={menuAnchor}
+            open={!!menuAnchor}
+            onClose={() => setMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <Box sx={{ px: 2, py: 1, minWidth: 220 }}>
+              <Typography sx={{ fontWeight: 600 }}>{user?.fullName}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {user?.email}
+              </Typography>
+              {role && (
+                <Typography variant="body2" color="text.secondary">
+                  {humanize(role)}
+                </Typography>
+              )}
+            </Box>
+            <Divider />
+            {accountItems.map((item) => (
+              <MenuItem
+                key={item.path}
+                onClick={() => {
+                  setMenuAnchor(null);
+                  navigate(item.path);
+                }}
+              >
+                {item.label}
+              </MenuItem>
+            ))}
+            <Divider />
+            <MenuItem
+              onClick={async () => {
+                setMenuAnchor(null);
+                await signOut();
+                navigate('/login');
+              }}
+            >
+              Log out
+            </MenuItem>
+          </Menu>
         </Box>
       </Box>
 
@@ -130,14 +215,16 @@ export default function AppLayout() {
             borderRight: 1,
             borderColor: 'divider',
             bgcolor: colors.subtle,
-            py: 1.5,
+            py: 2,
             overflowY: 'auto',
           }}
         >
           {sections.map(({ section, items: sectionItems }) => (
             <Box key={section} sx={{ mb: 2 }}>
               {SECTION_TITLES[section] && (
-                <Typography sx={{ px: 2.5, pb: 0.5, fontSize: 12, fontWeight: 600, color: 'text.secondary' }}>
+                <Typography
+                  sx={{ px: 2.5, pb: 0.5, fontSize: 11, fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.02em' }}
+                >
                   {SECTION_TITLES[section]}
                 </Typography>
               )}
@@ -148,12 +235,14 @@ export default function AppLayout() {
           ))}
         </Box>
 
-        <Box component="main" sx={{ flex: 1, overflow: 'auto', px: 3, py: 2.5 }}>
-          <Box sx={{ maxWidth: 1200 }}>
+        <Box component="main" sx={{ flex: 1, overflow: 'auto', px: 5, py: 3 }}>
+          <Box sx={{ maxWidth: 1280 }}>
             <Outlet />
           </Box>
         </Box>
       </Box>
+
+      <NewTicketDialog open={creating} onClose={() => setCreating(false)} />
     </Box>
   );
 }

@@ -1,9 +1,11 @@
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Link from '@mui/material/Link';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
-import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   useAssignTicketMutation,
   useDeleteTicketMutation,
@@ -11,17 +13,20 @@ import {
   useGetTicketQuery,
   useTransitionTicketMutation,
 } from '../../api/api';
-import type { TicketStatus } from '../../api/types';
+import type { TicketDetail, TicketStatus } from '../../api/types';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { ErrorBanner, Loading } from '../../components/Feedback';
-import { PriorityText, StatusLabel, TypeText } from '../../components/Labels';
+import { PriorityIcon, StatusLabel, TypeIcon } from '../../components/Labels';
+import { LOZENGE, STATUS_TONE } from '../../components/tones';
+import PageHeader from '../../components/PageHeader';
+import UserAvatar from '../../components/UserAvatar';
 import UserPicker from '../../components/UserPicker';
 import { colors } from '../../theme';
-import { formatDate, formatDateTime } from '../../utils/format';
+import { formatDate, formatDateTime, humanize, timeAgo } from '../../utils/format';
 import EditTicketDialog from './EditTicketDialog';
 import Timeline from './Timeline';
 
-/** Button text for a move, by target (and source, for the backwards moves). */
+/** Menu text for a move, by target (and source, for the backwards moves). */
 function transitionLabel(from: TicketStatus, to: TicketStatus): string {
   if (to === 'IN_PROGRESS') return from === 'IN_REVIEW' ? 'Back to in progress' : 'Start progress';
   if (to === 'IN_REVIEW') return 'Send to review';
@@ -29,11 +34,51 @@ function transitionLabel(from: TicketStatus, to: TicketStatus): string {
   return from === 'CLOSED' ? 'Reopen' : 'Back to open';
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** Jira-style status button: shows the current status, opens the allowed moves. */
+function StatusButton({ ticket, busy, onMove }: { ticket: TicketDetail; busy: boolean; onMove: (to: TicketStatus) => void }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const tone = LOZENGE[STATUS_TONE[ticket.status]];
+  const canMove = ticket.allowedTransitions.length > 0;
   return (
-    <Box sx={{ py: 1, borderBottom: 1, borderColor: 'divider' }}>
-      <Typography sx={{ fontSize: 12, fontWeight: 600, color: 'text.secondary', mb: 0.25 }}>{label}</Typography>
-      <Box sx={{ fontSize: 14 }}>{children}</Box>
+    <>
+      <Button
+        disabled={busy || !canMove}
+        onClick={(e) => setAnchor(e.currentTarget)}
+        endIcon={canMove ? <KeyboardArrowDownIcon /> : undefined}
+        sx={{
+          bgcolor: tone.bg,
+          color: tone.color,
+          fontWeight: 600,
+          '&:hover': { bgcolor: tone.bg, filter: 'brightness(0.95)' },
+          '&.Mui-disabled': { bgcolor: tone.bg, color: tone.color },
+        }}
+      >
+        {humanize(ticket.status)}
+      </Button>
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}>
+        {ticket.allowedTransitions.map((to) => (
+          <MenuItem
+            key={to}
+            onClick={() => {
+              setAnchor(null);
+              onMove(to);
+            }}
+            sx={{ gap: 2, justifyContent: 'space-between', minWidth: 240 }}
+          >
+            {transitionLabel(ticket.status, to)}
+            <StatusLabel status={to} />
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Box sx={{ display: 'grid', gridTemplateColumns: '110px 1fr', alignItems: 'center', minHeight: 40, fontSize: 14 }}>
+      <Typography sx={{ fontSize: 14, fontWeight: 600, color: colors.muted }}>{label}</Typography>
+      <Box sx={{ minWidth: 0 }}>{children}</Box>
     </Box>
   );
 }
@@ -56,87 +101,92 @@ export default function TicketDetailPage() {
 
   return (
     <>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-        <Link component={RouterLink} to={`/projects/${ticket.projectId}`} color="inherit">
-          {ticket.projectName}
-        </Link>{' '}
-        / <span className="mono">{ticket.key}</span>
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', pb: 1.5, mb: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h1" sx={{ flex: 1 }}>
-          {ticket.title}{' '}
-          <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>
-            {ticket.key}
+      <PageHeader
+        breadcrumbs={[
+          { label: 'Projects', to: '/projects' },
+          { label: ticket.projectName, to: `/projects/${ticket.projectId}` },
+          { label: ticket.key },
+        ]}
+        title={
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.25 }}>
+            <TypeIcon type={ticket.type} />
+            {ticket.title}
           </Box>
-        </Typography>
-        {ticket.permissions.canEdit && <Button onClick={() => setEditing(true)}>Edit</Button>}
-        {ticket.permissions.canDelete && (
-          <Button color="error" onClick={() => setConfirmDelete(true)}>
-            Delete
-          </Button>
-        )}
-      </Box>
+        }
+        actions={
+          <>
+            {ticket.permissions.canEdit && <Button onClick={() => setEditing(true)}>Edit</Button>}
+            {ticket.permissions.canDelete && (
+              <Button color="error" onClick={() => setConfirmDelete(true)}>
+                Delete
+              </Button>
+            )}
+          </>
+        }
+      />
 
       <ErrorBanner error={transitionState.error ?? assignState.error} />
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 260px', gap: 4 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 5 }}>
         <Box>
-          <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb: 3 }}>
-            <Box sx={{ px: 1.5, py: 0.75, bgcolor: colors.subtle, borderBottom: 1, borderColor: 'divider', fontSize: 13 }}>
-              <b>{ticket.reporter.fullName}</b>{' '}
-              <Box component="span" sx={{ color: 'text.secondary' }}>
-                opened this on {formatDateTime(ticket.createdAt)}
-              </Box>
-            </Box>
-            <Typography sx={{ px: 1.5, py: 1.25, whiteSpace: 'pre-wrap', fontSize: 14, color: ticket.description ? undefined : 'text.secondary' }}>
-              {ticket.description || 'No description.'}
-            </Typography>
-          </Box>
+          <Typography variant="h3" sx={{ mb: 1 }}>
+            Description
+          </Typography>
+          <Typography
+            sx={{ whiteSpace: 'pre-wrap', fontSize: 14, mb: 4, color: ticket.description ? undefined : 'text.secondary' }}
+          >
+            {ticket.description || 'Add a description…'}
+          </Typography>
           <Timeline ticketId={ticket.id} canComment={ticket.permissions.canComment} />
         </Box>
 
         <Box>
-          <Field label="Status">
-            <StatusLabel status={ticket.status} />
-            {ticket.allowedTransitions.length > 0 && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 1 }}>
-                {ticket.allowedTransitions.map((to) => (
-                  <Button
-                    key={to}
-                    variant={to === 'CLOSED' || (ticket.status === 'OPEN' && to === 'IN_PROGRESS') ? 'contained' : 'outlined'}
-                    disabled={transitionState.isLoading}
-                    onClick={() => transition({ id: ticket.id, status: to })}
-                  >
-                    {transitionLabel(ticket.status, to)}
-                  </Button>
-                ))}
-              </Box>
+          <Box sx={{ mb: 2 }}>
+            <StatusButton ticket={ticket} busy={transitionState.isLoading} onMove={(to) => transition({ id: ticket.id, status: to })} />
+          </Box>
+          <Box sx={{ border: 1, borderColor: 'divider', borderRadius: '3px' }}>
+            <Typography sx={{ px: 2, py: 1.25, fontWeight: 600, borderBottom: 1, borderColor: 'divider' }}>Details</Typography>
+            <Box sx={{ px: 2, py: 1 }}>
+              <DetailRow label="Assignee">
+                {ticket.permissions.canAssign ? (
+                  <UserPicker
+                    value={ticket.assignee ?? null}
+                    options={memberOptions}
+                    disabled={assignState.isLoading}
+                    onChange={(user) => assign({ id: ticket.id, assigneeId: user?.id ?? null })}
+                  />
+                ) : (
+                  <UserAvatar name={ticket.assignee?.fullName} withName />
+                )}
+              </DetailRow>
+              <DetailRow label="Reporter">
+                <UserAvatar name={ticket.reporter.fullName} withName />
+              </DetailRow>
+              <DetailRow label="Priority">
+                <PriorityIcon priority={ticket.priority} withLabel />
+              </DetailRow>
+              <DetailRow label="Type">
+                <TypeIcon type={ticket.type} withLabel />
+              </DetailRow>
+              <DetailRow label="Due date">
+                {ticket.dueDate ? formatDate(ticket.dueDate) : <Box component="span" sx={{ color: 'text.secondary' }}>None</Box>}
+              </DetailRow>
+              <DetailRow label="Project">
+                {ticket.projectName} <Box component="span" sx={{ color: 'text.secondary' }}>({ticket.key})</Box>
+              </DetailRow>
+            </Box>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, lineHeight: 1.8 }}>
+            <span title={formatDateTime(ticket.createdAt)}>Created {timeAgo(ticket.createdAt)}</span>
+            <br />
+            <span title={formatDateTime(ticket.updatedAt)}>Updated {timeAgo(ticket.updatedAt)}</span>
+            {ticket.closedAt && (
+              <>
+                <br />
+                <span title={formatDateTime(ticket.closedAt)}>Closed {timeAgo(ticket.closedAt)}</span>
+              </>
             )}
-          </Field>
-          <Field label="Assignee">
-            {ticket.permissions.canAssign ? (
-              <Box sx={{ mt: 0.5 }}>
-                <UserPicker
-                  value={ticket.assignee ?? null}
-                  options={memberOptions}
-                  disabled={assignState.isLoading}
-                  onChange={(user) => assign({ id: ticket.id, assigneeId: user?.id ?? null })}
-                />
-              </Box>
-            ) : (
-              (ticket.assignee?.fullName ?? <Box component="span" sx={{ color: 'text.secondary' }}>Unassigned</Box>)
-            )}
-          </Field>
-          <Field label="Priority">
-            <PriorityText priority={ticket.priority} />
-          </Field>
-          <Field label="Type">
-            <TypeText type={ticket.type} />
-          </Field>
-          <Field label="Reporter">{ticket.reporter.fullName}</Field>
-          <Field label="Due date">{ticket.dueDate ? formatDate(ticket.dueDate) : <Box component="span" sx={{ color: 'text.secondary' }}>None</Box>}</Field>
-          <Field label="Updated">{formatDateTime(ticket.updatedAt)}</Field>
-          {ticket.closedAt && <Field label="Closed">{formatDateTime(ticket.closedAt)}</Field>}
+          </Typography>
         </Box>
       </Box>
 

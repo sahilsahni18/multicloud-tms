@@ -34,6 +34,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { ErrorBanner, TableMessage } from '../../components/Feedback';
 import { RoleLabel } from '../../components/Labels';
 import PageHeader from '../../components/PageHeader';
+import UserAvatar from '../../components/UserAvatar';
 import { humanize, timeAgo } from '../../utils/format';
 
 function RolePicker({ value, onChange, disabled }: { value: RoleName[]; onChange: (r: RoleName[]) => void; disabled?: RoleName[] }) {
@@ -276,7 +277,9 @@ export default function UsersPage() {
             {data?.content.length === 0 && <TableMessage colSpan={6}>No users match.</TableMessage>}
             {data?.content.map((u) => (
               <TableRow key={u.id} hover>
-                <TableCell>{u.fullName}</TableCell>
+                <TableCell>
+                  <UserAvatar name={u.fullName} withName />
+                </TableCell>
                 <TableCell>{u.email}</TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>

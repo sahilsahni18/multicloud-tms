@@ -14,7 +14,7 @@ import { useGetDashboardQuery, useGetProjectsQuery, useGetTicketsQuery } from '.
 import { download, errorMessage } from '../api/http';
 import { TICKET_PRIORITIES, TICKET_STATUSES, type TicketPriority, type TicketStatus } from '../api/types';
 import { ErrorBanner, TableMessage } from '../components/Feedback';
-import { PriorityText, StatusLabel } from '../components/Labels';
+import { PriorityIcon, StatusLabel } from '../components/Labels';
 import PageHeader from '../components/PageHeader';
 import { formatDate, humanize } from '../utils/format';
 
@@ -119,7 +119,7 @@ export default function ReportsPage() {
                   <StatusLabel status={t.status} />
                 </TableCell>
                 <TableCell>
-                  <PriorityText priority={t.priority} />
+                  <PriorityIcon priority={t.priority} withLabel />
                 </TableCell>
                 <TableCell>{t.assignee?.fullName ?? '–'}</TableCell>
                 <TableCell>{formatDate(t.dueDate) || '–'}</TableCell>

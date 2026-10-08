@@ -24,19 +24,30 @@ import {
 } from '../../api/types';
 import { useCurrentUser, useHasRole } from '../../app/hooks';
 import { ErrorBanner, TableMessage } from '../../components/Feedback';
-import { PriorityText, StatusLabel, TypeText } from '../../components/Labels';
+import { PriorityIcon, StatusLabel, TypeIcon } from '../../components/Labels';
 import PageHeader from '../../components/PageHeader';
+import UserAvatar from '../../components/UserAvatar';
 import { humanize, timeAgo } from '../../utils/format';
 import { getPreferredPageSize } from '../../utils/preferences';
 import NewTicketDialog from './NewTicketDialog';
 
 type Who = '' | 'assigned' | 'reported' | 'unassigned';
 
-const SORTABLE: { key: string; label: string }[] = [
-  { key: 'key', label: 'Key' },
-  { key: 'title', label: 'Title' },
-  { key: 'status', label: 'Status' },
-  { key: 'priority', label: 'Priority' },
+interface Column {
+  key: string;
+  label: string;
+  width?: number;
+  /** Direction used on the first click. Absent = not sortable. */
+  firstDir?: 'asc' | 'desc';
+}
+
+const COLUMNS: Column[] = [
+  { key: 'key', label: 'Key', width: 90, firstDir: 'asc' },
+  { key: 'title', label: 'Summary', firstDir: 'asc' },
+  { key: 'status', label: 'Status', width: 130, firstDir: 'asc' },
+  { key: 'assignee', label: 'Assignee', width: 190 },
+  { key: 'priority', label: 'Priority', width: 120, firstDir: 'desc' },
+  { key: 'updatedAt', label: 'Updated', width: 110, firstDir: 'desc' },
 ];
 
 /** All filters live in the URL, so a filtered list can be bookmarked or shared. */
@@ -202,34 +213,32 @@ export default function TicketsPage() {
       <ErrorBanner error={error} />
       {exportError && <ErrorBanner error={{ detail: exportError }} />}
 
-      <Paper>
+      <Paper sx={{ border: 0 }}>
         <Table size="small">
           <TableHead>
             <TableRow>
-              {SORTABLE.map((col) => (
-                <TableCell key={col.key} sx={col.key === 'key' ? { width: 90 } : undefined}>
-                  <TableSortLabel
-                    active={sortField === col.key}
-                    direction={sortField === col.key ? sortDir : 'asc'}
-                    onClick={() =>
-                      update({ sort: `${col.key},${sortField === col.key && sortDir === 'asc' ? 'desc' : 'asc'}` })
-                    }
-                  >
-                    {col.label}
-                  </TableSortLabel>
+              <TableCell sx={{ width: 40 }}>Type</TableCell>
+              {COLUMNS.map((col) => (
+                <TableCell key={col.key} sx={col.width ? { width: col.width } : undefined}>
+                  {col.firstDir ? (
+                    <TableSortLabel
+                      active={sortField === col.key}
+                      direction={sortField === col.key ? sortDir : col.firstDir}
+                      onClick={() =>
+                        update({
+                          sort: `${col.key},${
+                            sortField === col.key ? (sortDir === 'asc' ? 'desc' : 'asc') : col.firstDir
+                          }`,
+                        })
+                      }
+                    >
+                      {col.label}
+                    </TableSortLabel>
+                  ) : (
+                    col.label
+                  )}
                 </TableCell>
               ))}
-              <TableCell>Type</TableCell>
-              <TableCell>Assignee</TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={sortField === 'updatedAt'}
-                  direction={sortField === 'updatedAt' ? sortDir : 'desc'}
-                  onClick={() => update({ sort: `updatedAt,${sortField === 'updatedAt' && sortDir === 'desc' ? 'asc' : 'desc'}` })}
-                >
-                  Updated
-                </TableSortLabel>
-              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody sx={{ opacity: isFetching ? 0.6 : 1 }}>
@@ -239,8 +248,11 @@ export default function TicketsPage() {
             {!data && !error && <TableMessage colSpan={7}>Loading…</TableMessage>}
             {data?.content.map((t) => (
               <TableRow key={t.id} hover>
-                <TableCell className="mono">
-                  <Link component={RouterLink} to={`/tickets/${t.id}`}>
+                <TableCell>
+                  <TypeIcon type={t.type} />
+                </TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                  <Link component={RouterLink} to={`/tickets/${t.id}`} sx={{ fontWeight: 500 }}>
                     {t.key}
                   </Link>
                 </TableCell>
@@ -252,14 +264,11 @@ export default function TicketsPage() {
                 <TableCell>
                   <StatusLabel status={t.status} />
                 </TableCell>
-                <TableCell>
-                  <PriorityText priority={t.priority} />
+                <TableCell sx={{ maxWidth: 180 }}>
+                  <UserAvatar name={t.assignee?.fullName} withName />
                 </TableCell>
                 <TableCell>
-                  <TypeText type={t.type} />
-                </TableCell>
-                <TableCell sx={{ color: t.assignee ? undefined : 'text.secondary' }}>
-                  {t.assignee?.fullName ?? 'Unassigned'}
+                  <PriorityIcon priority={t.priority} withLabel />
                 </TableCell>
                 <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }} title={t.updatedAt}>
                   {timeAgo(t.updatedAt)}

@@ -31,6 +31,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { ErrorBanner, Loading } from '../../components/Feedback';
 import { RoleLabel } from '../../components/Labels';
 import PageHeader from '../../components/PageHeader';
+import UserAvatar, { ProjectAvatar } from '../../components/UserAvatar';
 import UserPicker from '../../components/UserPicker';
 import NewTicketDialog from '../tickets/NewTicketDialog';
 
@@ -92,17 +93,22 @@ export default function ProjectDetailPage() {
   return (
     <>
       <PageHeader
+        breadcrumbs={[{ label: 'Projects', to: '/projects' }, { label: project.name }]}
         title={
-          <>
-            {project.name}{' '}
-            <Box component="span" className="mono" sx={{ color: 'text.secondary', fontWeight: 400 }}>
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1.5 }}>
+            <ProjectAvatar projectKey={project.key} size={32} />
+            {project.name}
+            <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400, fontSize: 16 }}>
               {project.key}
             </Box>
-          </>
+          </Box>
         }
-        description={`Owner: ${project.owner.fullName}`}
+        description={`Lead: ${project.owner.fullName}`}
         actions={
           <>
+            <Button variant="outlined" component={RouterLink} to={`/board?projectId=${project.id}`}>
+              Open board
+            </Button>
             <Button onClick={() => setCreatingTicket(true)}>New ticket</Button>
             {project.canManage && <Button onClick={() => setEditing(true)}>Edit</Button>}
             {isAdmin && (
@@ -163,10 +169,10 @@ export default function ProjectDetailPage() {
             {members?.map((m) => (
               <TableRow key={m.id}>
                 <TableCell>
-                  {m.fullName}
+                  <UserAvatar name={m.fullName} withName />
                   {m.owner && (
                     <Box component="span" sx={{ color: 'text.secondary', ml: 1, fontSize: 12 }}>
-                      owner
+                      lead
                     </Box>
                   )}
                 </TableCell>

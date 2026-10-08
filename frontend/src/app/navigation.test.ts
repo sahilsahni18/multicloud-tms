@@ -6,16 +6,18 @@ const labels = (roles: Parameters<typeof navFor>[0]) => navFor(roles).map((i) =>
 describe('role-based navigation', () => {
   it('admin sees every menu', () => {
     expect(labels(['ADMIN'])).toEqual([
-      'Dashboard', 'Tickets', 'Projects', 'Reports', 'Users', 'Roles', 'Deployments', 'Profile', 'Settings',
+      'Dashboard', 'Board', 'Tickets', 'Projects', 'Reports', 'Users', 'Roles', 'Deployments', 'Profile', 'Settings',
     ]);
   });
 
   it('project manager gets reports but no administration', () => {
-    expect(labels(['PROJECT_MANAGER'])).toEqual(['Dashboard', 'Tickets', 'Projects', 'Reports', 'Profile', 'Settings']);
+    expect(labels(['PROJECT_MANAGER'])).toEqual([
+      'Dashboard', 'Board', 'Tickets', 'Projects', 'Reports', 'Profile', 'Settings',
+    ]);
   });
 
   it('developer and user get the basics only', () => {
-    const basics = ['Dashboard', 'Tickets', 'Projects', 'Profile', 'Settings'];
+    const basics = ['Dashboard', 'Board', 'Tickets', 'Projects', 'Profile', 'Settings'];
     expect(labels(['DEVELOPER'])).toEqual(basics);
     expect(labels(['USER'])).toEqual(basics);
   });

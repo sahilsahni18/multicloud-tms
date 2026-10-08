@@ -3,6 +3,7 @@ import AppLayout from './components/AppLayout';
 import { GuestOnly, RequireAuth, RequireRole } from './features/auth/guards';
 import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
+import BoardPage from './pages/BoardPage';
 import DashboardPage from './pages/DashboardPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ProfilePage from './pages/ProfilePage';
@@ -28,6 +29,7 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
+          <Route path="board" element={<BoardPage />} />
           <Route path="tickets" element={<TicketsPage />} />
           <Route path="tickets/:id" element={<TicketDetailPage />} />
           <Route path="projects" element={<ProjectsPage />} />

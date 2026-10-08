@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
+import Logo from '../../components/Logo';
 import { colors } from '../../theme';
 
 /** Narrow centred column for the sign-in and sign-up forms. */
@@ -11,12 +12,12 @@ export default function AuthLayout({ title, children, footer }: {
 }) {
   return (
     <Box sx={{ minHeight: '100%', bgcolor: colors.subtle, display: 'flex', justifyContent: 'center', pt: '12vh' }}>
-      <Box sx={{ width: 340 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: 18, color: colors.blue, textAlign: 'center', mb: 2 }}>
-          TrackFlow
-        </Typography>
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h2" sx={{ mb: 2 }}>
+      <Box sx={{ width: 380 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+          <Logo size={32} />
+        </Box>
+        <Paper variant="elevation" elevation={3} sx={{ p: 4 }}>
+          <Typography variant="h2" sx={{ mb: 2, textAlign: 'center' }}>
             {title}
           </Typography>
           {children}

@@ -20,6 +20,7 @@ import { errorMessage } from '../../api/http';
 import { useHasRole } from '../../app/hooks';
 import { ErrorBanner, TableMessage } from '../../components/Feedback';
 import PageHeader from '../../components/PageHeader';
+import UserAvatar, { ProjectAvatar } from '../../components/UserAvatar';
 
 function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
@@ -111,30 +112,32 @@ export default function ProjectsPage() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: 90 }}>Key</TableCell>
               <TableCell>Name</TableCell>
-              <TableCell>Owner</TableCell>
+              <TableCell sx={{ width: 90 }}>Key</TableCell>
+              <TableCell>Lead</TableCell>
               <TableCell align="right">Members</TableCell>
-              <TableCell align="right">Open tickets</TableCell>
+              <TableCell align="right">Open</TableCell>
               <TableCell align="right">Total</TableCell>
+              <TableCell sx={{ width: 70 }} />
             </TableRow>
           </TableHead>
           <TableBody>
-            {!data && !error && <TableMessage colSpan={6}>Loading…</TableMessage>}
-            {data?.content.length === 0 && <TableMessage colSpan={6}>You are not a member of any project yet.</TableMessage>}
+            {!data && !error && <TableMessage colSpan={7}>Loading…</TableMessage>}
+            {data?.content.length === 0 && <TableMessage colSpan={7}>You are not a member of any project yet.</TableMessage>}
             {data?.content.map((p) => (
               <TableRow key={p.id} hover>
-                <TableCell className="mono">
-                  <Link component={RouterLink} to={`/projects/${p.id}`}>
-                    {p.key}
-                  </Link>
-                </TableCell>
                 <TableCell>
-                  <Link component={RouterLink} to={`/projects/${p.id}`} color="inherit">
-                    {p.name}
-                  </Link>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                    <ProjectAvatar projectKey={p.key} />
+                    <Link component={RouterLink} to={`/projects/${p.id}`} sx={{ fontWeight: 500 }}>
+                      {p.name}
+                    </Link>
+                  </Box>
                 </TableCell>
-                <TableCell>{p.owner.fullName}</TableCell>
+                <TableCell>{p.key}</TableCell>
+                <TableCell>
+                  <UserAvatar name={p.owner.fullName} withName />
+                </TableCell>
                 <TableCell align="right">{p.memberCount}</TableCell>
                 <TableCell align="right">
                   <Link component={RouterLink} to={`/tickets?projectId=${p.id}&status=OPEN&status=IN_PROGRESS&status=IN_REVIEW`}>
@@ -142,6 +145,11 @@ export default function ProjectsPage() {
                   </Link>
                 </TableCell>
                 <TableCell align="right">{p.totalTickets}</TableCell>
+                <TableCell align="right">
+                  <Link component={RouterLink} to={`/board?projectId=${p.id}`} variant="body2">
+                    Board
+                  </Link>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
