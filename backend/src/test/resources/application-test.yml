@@ -1,0 +1,13 @@
+app:
+  security:
+    jwt:
+      secret: kQx/UfPHjmtvTQh78vwq6TWD1SEeBugBZ/Tq5xwpISLzFRYSXO8xuuAE4eBzqMB8QBOSjArSxgYuakakwCuWjA==
+    refresh-cookie:
+      secure: false
+    auth-rate-limit:
+      enabled: false              # covered by AuthRateLimitFilterTest; would trip on the many logins here
+  cors:
+    allowed-origins: http://localhost:5173
+  deployment:
+    simulated-step-delay: 50ms
+    callback-secret: test-callback-secret

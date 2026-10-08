@@ -1,0 +1,110 @@
+# Base configuration shared by every environment.
+# Environment-specific values come from env vars (12-factor) or a profile file:
+#   local      laptop, plain-text logs, demo data, dev JWT key
+#   cloud      EKS / AKS, JSON logs; all secrets from env (K8s Secret)
+#   demo-data  adds the Flyway demo seed (pulled in by `local`)
+
+spring:
+  application:
+    name: trackflow-backend
+  profiles:
+    group:
+      local: demo-data
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/trackflow}
+    username: ${DB_USERNAME:trackflow}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema; Hibernate only checks it
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        type.preferred_instant_jdbc_type: TIMESTAMP   # map Instant to DATETIME(6)
+  flyway:
+    locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      enabled: true
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+  shutdown: graceful
+  # Trust X-Forwarded-* only from internal addresses (ingress / load balancer).
+  forward-headers-strategy: native
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true             # /actuator/health/liveness and /readiness for Kubernetes
+      show-details: never
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: TrackFlow
+    region: ${APP_REGION:local}
+    cloud: ${APP_CLOUD:local}
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:}      # required; Base64, >= 64 bytes
+      issuer: trackflow
+      access-token-ttl: 15m
+      refresh-token-ttl: 7d
+    refresh-cookie:
+      name: tf_refresh
+      secure: ${REFRESH_COOKIE_SECURE:true}
+      same-site: ${REFRESH_COOKIE_SAME_SITE:Strict}
+      path: /api/v1/auth
+    auth-rate-limit:
+      enabled: true
+      requests-per-minute: ${AUTH_RATE_LIMIT_PER_MINUTE:10}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  deployment:
+    runner: ${DEPLOY_RUNNER:SIMULATED}           # GITHUB_ACTIONS in the cloud (Day 3)
+    simulated-step-delay: ${DEPLOY_SIMULATED_STEP_DELAY:3s}
+    callback-secret: ${DEPLOY_CALLBACK_SECRET:}  # HMAC key shared with the provisioning workflow
+    callback-max-skew: 5m
+    apply-environments: ${DEPLOY_APPLY_ENVIRONMENTS:DEV}   # QA / PROD are PLAN-only in the demo
+    regions:
+      AWS: [us-east-1, us-west-2]
+      AZURE: [eastus, westeurope]
+  bootstrap:
+    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    admin-name: ${BOOTSTRAP_ADMIN_NAME:Platform Admin}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    persist-authorization: true
+    tags-sorter: alpha
+
+logging:
+  pattern:
+    level: "%5p [%X{correlationId:-}]"

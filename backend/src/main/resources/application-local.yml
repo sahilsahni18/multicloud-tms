@@ -1,0 +1,18 @@
+# Laptop profile: MySQL from docker-compose on localhost:3306.
+spring:
+  datasource:
+    password: ${DB_PASSWORD:trackflow_local}
+
+app:
+  security:
+    jwt:
+      # DEV ONLY - never used outside the local profile. Cloud reads JWT_SECRET from a Secret.
+      secret: ${JWT_SECRET:+w2sC+J0eNRQL4fuiDI7K0w8c1Wf2UZA/CqfNaSOK2uJBaJSyYYU0Fzsyxa09cPfYifkHUlySg0mLm13OOiHuw==}
+    refresh-cookie:
+      secure: false               # plain http on localhost
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+
+logging:
+  level:
+    com.trackflow: DEBUG

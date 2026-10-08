@@ -1,0 +1,4 @@
+# Loads db/demo (5 users, 2 projects, 11 tickets). Never enable in prod.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/demo

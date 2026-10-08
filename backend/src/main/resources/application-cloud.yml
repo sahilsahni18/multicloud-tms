@@ -1,0 +1,11 @@
+# EKS / AKS. Every secret (DB_PASSWORD, JWT_SECRET, BOOTSTRAP_ADMIN_*) comes
+# from a Kubernetes Secret; DB_URL, CORS_ALLOWED_ORIGINS, APP_REGION from a ConfigMap.
+logging:
+  structured:
+    format:
+      console: ecs                # one JSON object per line, MDC (correlationId, userId) included
+
+server:
+  tomcat:
+    threads:
+      max: 100
