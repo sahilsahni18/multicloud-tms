@@ -20,6 +20,7 @@ public final class ActivityActions {
     public static final String USER_UPDATED = "USER_UPDATED";
     public static final String USER_ROLES_CHANGED = "USER_ROLES_CHANGED";
     public static final String USER_DELETED = "USER_DELETED";
+    public static final String USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
     public static final String DEPLOYMENT_REQUESTED = "DEPLOYMENT_REQUESTED";
     public static final String DEPLOYMENT_DESTROY_REQUESTED = "DEPLOYMENT_DESTROY_REQUESTED";
 

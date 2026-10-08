@@ -24,6 +24,7 @@ import {
   useCreateUserMutation,
   useDeleteUserMutation,
   useGetUsersQuery,
+  useResetUserPasswordMutation,
   useUpdateUserMutation,
   useUpdateUserRolesMutation,
 } from '../../api/api';
@@ -123,6 +124,67 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   );
 }
 
+/** For forgotten passwords: the admin sets a temporary one and tells the user. */
+function ResetPassword({ user }: { user: User }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [reset, { isLoading, isSuccess, error, reset: clearState }] = useResetUserPasswordMutation();
+
+  if (!open) {
+    return (
+      <Box>
+        <Link component="button" type="button" variant="body2" onClick={() => setOpen(true)}>
+          Reset password…
+        </Link>
+      </Box>
+    );
+  }
+  return (
+    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: '3px', p: 1.5, display: 'grid', gap: 1 }}>
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        Reset password
+      </Typography>
+      {isSuccess ? (
+        <Typography variant="body2" color="success.main">
+          Password changed and {user.fullName} was signed out everywhere. Give them the new password and ask them to
+          change it under Profile.
+        </Typography>
+      ) : (
+        <>
+          {error && (
+            <Typography variant="body2" color="error">
+              {errorMessage(error)}
+            </Typography>
+          )}
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            <TextField
+              label="New password"
+              type="text"
+              autoComplete="off"
+              value={password}
+              onChange={(e) => {
+                clearState();
+                setPassword(e.target.value);
+              }}
+              helperText="At least 8 characters"
+              sx={{ flex: 1 }}
+            />
+            <Button
+              variant="contained"
+              color="warning"
+              disabled={isLoading || password.length < 8}
+              onClick={() => reset({ id: user.id, newPassword: password })}
+              sx={{ mt: '4px' }}
+            >
+              Set password
+            </Button>
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+}
+
 function EditUserDialog({ user, onClose }: { user: User; onClose: () => void }) {
   const me = useCurrentUser();
   const isSelf = me?.id === user.id;
@@ -175,6 +237,7 @@ function EditUserDialog({ user, onClose }: { user: User; onClose: () => void }) 
             </Typography>
             <RolePicker value={roles} onChange={setRoles} disabled={isSelf ? ['ADMIN'] : undefined} />
           </Box>
+          {!isSelf && <ResetPassword user={user} />}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           {!isSelf && (

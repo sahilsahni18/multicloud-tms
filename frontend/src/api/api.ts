@@ -184,6 +184,9 @@ export const api = createApi({
       query: ({ id, roles }) => ({ url: `/users/${id}/roles`, method: 'PUT', data: { roles } }),
       invalidatesTags: ['User', 'Role'],
     }),
+    resetUserPassword: b.mutation<void, { id: number; newPassword: string }>({
+      query: ({ id, newPassword }) => ({ url: `/users/${id}/password`, method: 'PUT', data: { newPassword } }),
+    }),
     deleteUser: b.mutation<void, number>({
       query: (id) => ({ url: `/users/${id}`, method: 'DELETE' }),
       invalidatesTags: ['User', 'Role'],
@@ -259,6 +262,7 @@ export const {
   useCreateUserMutation,
   useUpdateUserMutation,
   useUpdateUserRolesMutation,
+  useResetUserPasswordMutation,
   useDeleteUserMutation,
   useGetRolesQuery,
   useUpdateProfileMutation,

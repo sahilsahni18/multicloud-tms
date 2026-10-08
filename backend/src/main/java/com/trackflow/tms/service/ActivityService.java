@@ -7,6 +7,7 @@ import com.trackflow.tms.entity.HistoryChangeType;
 import com.trackflow.tms.entity.RoleName;
 import com.trackflow.tms.entity.Ticket;
 import com.trackflow.tms.entity.TicketHistory;
+import com.trackflow.tms.mapper.ActivityMapper;
 import com.trackflow.tms.repository.ActivityLogRepository;
 import com.trackflow.tms.repository.ProjectRepository;
 import com.trackflow.tms.repository.TicketHistoryRepository;
@@ -38,6 +39,7 @@ public class ActivityService {
 
     private final TicketHistoryRepository historyRepository;
     private final ActivityLogRepository activityRepository;
+    private final ActivityMapper activityMapper;
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final Clock clock;
@@ -102,7 +104,7 @@ public class ActivityService {
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };
-        return PageResponse.of(activityRepository.findAll(visible, pageable), ActivityResponse::from);
+        return PageResponse.of(activityRepository.findAll(visible, pageable), activityMapper::toResponse);
     }
 
     private void history(Ticket ticket, AuthUser actor, HistoryChangeType type, String field,

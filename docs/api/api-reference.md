@@ -28,6 +28,7 @@ Conventions:
 | POST | `/users` | ADMIN | `{email, fullName, password, roles[], enabled?}` |
 | PUT | `/users/{id}` | ADMIN | `{email, fullName, enabled}`; disabling signs the user out |
 | PUT | `/users/{id}/roles` | ADMIN | `{roles[]}`; cannot remove your own ADMIN |
+| PUT | `/users/{id}/password` | ADMIN | `{newPassword}`: reset a forgotten password; signs the user out everywhere. Not for your own account (use `/users/me/password`) |
 | DELETE | `/users/{id}` | ADMIN | Soft delete; cannot delete yourself |
 | PUT | `/users/me` | any role | `{fullName}` |
 | PUT | `/users/me/password` | any role | `{currentPassword, newPassword}`; signs out everywhere |

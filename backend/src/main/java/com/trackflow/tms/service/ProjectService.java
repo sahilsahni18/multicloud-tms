@@ -1,7 +1,6 @@
 package com.trackflow.tms.service;
 
 import com.trackflow.tms.dto.common.PageResponse;
-import com.trackflow.tms.dto.common.UserRef;
 import com.trackflow.tms.dto.project.AddMemberRequest;
 import com.trackflow.tms.dto.project.CreateProjectRequest;
 import com.trackflow.tms.dto.project.MemberResponse;
@@ -15,6 +14,8 @@ import com.trackflow.tms.exception.BadRequestException;
 import com.trackflow.tms.exception.ConflictException;
 import com.trackflow.tms.exception.ForbiddenException;
 import com.trackflow.tms.exception.NotFoundException;
+import com.trackflow.tms.mapper.ProjectMapper;
+import com.trackflow.tms.mapper.UserMapper;
 import com.trackflow.tms.repository.ProjectRepository;
 import com.trackflow.tms.repository.UserRepository;
 import com.trackflow.tms.security.AuthUser;
@@ -38,6 +39,8 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final ProjectAccessPolicy access;
+    private final ProjectMapper projectMapper;
+    private final UserMapper userMapper;
     private final ActivityService activity;
     private final Clock clock;
 
@@ -176,17 +179,14 @@ public class ProjectService {
     }
 
     private ProjectResponse toResponse(AuthUser user, Project p, long memberCount, long[] tickets) {
-        return new ProjectResponse(p.getId(), p.getProjectKey(), p.getName(), p.getDescription(),
-                UserRef.of(p.getOwner()), memberCount, tickets[0], tickets[1], p.getCreatedAt(),
-                access.canManage(user, p));
+        return projectMapper.toResponse(p, memberCount, tickets[0], tickets[1], access.canManage(user, p));
     }
 
     private List<MemberResponse> toMembers(Project project) {
         return project.getMembers().stream()
                 .filter(m -> m.getDeletedAt() == null)
                 .sorted(Comparator.comparing((User m) -> !project.isOwnedBy(m.getId())).thenComparing(User::getFullName))
-                .map(m -> new MemberResponse(m.getId(), m.getFullName(), m.getEmail(),
-                        m.roleNames().stream().sorted().toList(), project.isOwnedBy(m.getId())))
+                .map(m -> userMapper.toMember(m, project.isOwnedBy(m.getId())))
                 .toList();
     }
 }

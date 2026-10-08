@@ -4,6 +4,7 @@ import com.trackflow.tms.dto.common.PageResponse;
 import com.trackflow.tms.dto.common.UserRef;
 import com.trackflow.tms.dto.user.ChangePasswordRequest;
 import com.trackflow.tms.dto.user.CreateUserRequest;
+import com.trackflow.tms.dto.user.ResetPasswordRequest;
 import com.trackflow.tms.dto.user.UpdateProfileRequest;
 import com.trackflow.tms.dto.user.UpdateRolesRequest;
 import com.trackflow.tms.dto.user.UpdateUserRequest;
@@ -94,6 +95,15 @@ public class UserController {
     public UserResponse updateRoles(@AuthenticationPrincipal AuthUser actor, @PathVariable Long id,
                                     @Valid @RequestBody UpdateRolesRequest request) {
         return userService.updateRoles(actor, id, request);
+    }
+
+    @PutMapping("/{id}/password")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Set a new password for a user who forgot theirs (signs them out everywhere)")
+    public ResponseEntity<Void> resetPassword(@AuthenticationPrincipal AuthUser actor, @PathVariable Long id,
+                                              @Valid @RequestBody ResetPasswordRequest request) {
+        userService.resetPassword(actor, id, request);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")

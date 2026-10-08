@@ -1,6 +1,6 @@
 package com.trackflow.tms.security;
 
-import com.trackflow.tms.util.FixedWindowRateLimiter;
+import com.trackflow.tms.util.IpRateLimiter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +26,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             "/api/v1/auth/register",
             "/api/v1/auth/refresh");
 
-    private final FixedWindowRateLimiter limiter;
+    private final IpRateLimiter limiter;
     private final SecurityProblemHandler problems;
 
     @Override
@@ -37,7 +37,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        FixedWindowRateLimiter.Decision decision = limiter.tryAcquire(request.getRemoteAddr());
+        IpRateLimiter.Decision decision = limiter.tryAcquire(request.getRemoteAddr());
         if (!decision.allowed()) {
             response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(decision.retryAfterSeconds()));
             problems.write(request, response, HttpStatus.TOO_MANY_REQUESTS, "Too many requests",

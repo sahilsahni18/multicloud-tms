@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trackflow.tms.support.MutableClock;
-import com.trackflow.tms.util.FixedWindowRateLimiter;
+import com.trackflow.tms.util.IpRateLimiter;
 import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class AuthRateLimitFilterTest {
 
     private final AuthRateLimitFilter filter = new AuthRateLimitFilter(
-            new FixedWindowRateLimiter(2, Duration.ofMinutes(1), new MutableClock(Instant.parse("2026-10-08T10:00:00Z"))),
+            new IpRateLimiter(2, Duration.ofMinutes(1), new MutableClock(Instant.parse("2026-10-08T10:00:00Z"))),
             new SecurityProblemHandler(new ObjectMapper()));
 
     private MockHttpServletResponse call(String method, String path, String ip) throws Exception {
@@ -33,7 +33,7 @@ class AuthRateLimitFilterTest {
 
         MockHttpServletResponse blocked = call("POST", "/api/v1/auth/login", "1.2.3.4");
         assertThat(blocked.getStatus()).isEqualTo(429);
-        assertThat(blocked.getHeader("Retry-After")).isEqualTo("60");
+        assertThat(blocked.getHeader("Retry-After")).isEqualTo("30"); // 2 per minute: one back every 30 s
         assertThat(blocked.getContentType()).isEqualTo("application/problem+json");
         assertThat(blocked.getContentAsString()).contains("Too many requests");
 

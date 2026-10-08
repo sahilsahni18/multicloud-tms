@@ -4,6 +4,7 @@ import com.trackflow.tms.dto.common.PageResponse;
 import com.trackflow.tms.dto.common.UserRef;
 import com.trackflow.tms.dto.user.ChangePasswordRequest;
 import com.trackflow.tms.dto.user.CreateUserRequest;
+import com.trackflow.tms.dto.user.ResetPasswordRequest;
 import com.trackflow.tms.dto.user.RoleResponse;
 import com.trackflow.tms.dto.user.UpdateProfileRequest;
 import com.trackflow.tms.dto.user.UpdateRolesRequest;
@@ -15,6 +16,7 @@ import com.trackflow.tms.entity.User;
 import com.trackflow.tms.exception.BadRequestException;
 import com.trackflow.tms.exception.ConflictException;
 import com.trackflow.tms.exception.NotFoundException;
+import com.trackflow.tms.mapper.UserMapper;
 import com.trackflow.tms.repository.RoleRepository;
 import com.trackflow.tms.repository.UserRepository;
 import com.trackflow.tms.security.AuthUser;
@@ -28,8 +30,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -48,6 +50,7 @@ public class UserService {
     private static final int LOOKUP_LIMIT = 20;
 
     private final UserRepository userRepository;
+    private final UserMapper userMapper;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
@@ -56,12 +59,12 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public PageResponse<UserResponse> search(String q, RoleName role, Boolean enabled, Pageable pageable) {
-        return PageResponse.of(userRepository.search(blankToNull(q), role, enabled, pageable), UserResponse::from);
+        return PageResponse.of(userRepository.search(blankToNull(q), role, enabled, pageable), userMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
     public UserResponse get(Long id) {
-        return UserResponse.from(load(id));
+        return userMapper.toResponse(load(id));
     }
 
     /** Small, active-only list for pickers (add member, assign ticket). */
@@ -69,7 +72,7 @@ public class UserService {
     public List<UserRef> lookup(String q) {
         return userRepository.search(blankToNull(q), null, true,
                         PageRequest.of(0, LOOKUP_LIMIT, Sort.by("fullName")))
-                .map(UserRef::of)
+                .map(userMapper::toRef)
                 .getContent();
     }
 
@@ -100,7 +103,7 @@ public class UserService {
         userRepository.save(user);
         activity.log(actor, ActivityActions.USER_CREATED, ActivityActions.ENTITY_USER, user.getId(), null,
                 "Created user " + user.getEmail() + " " + sortedNames(request.roles()), null);
-        return UserResponse.from(user);
+        return userMapper.toResponse(user);
     }
 
     @Transactional
@@ -122,7 +125,7 @@ public class UserService {
         }
         activity.log(actor, ActivityActions.USER_UPDATED, ActivityActions.ENTITY_USER, user.getId(), null,
                 "Updated user " + user.getEmail() + (disabling ? " (disabled)" : ""), null);
-        return UserResponse.from(user);
+        return userMapper.toResponse(user);
     }
 
     @Transactional
@@ -135,7 +138,7 @@ public class UserService {
         user.setRoles(resolveRoles(request.roles()));
         activity.log(actor, ActivityActions.USER_ROLES_CHANGED, ActivityActions.ENTITY_USER, user.getId(), null,
                 "Roles of " + user.getEmail() + ": " + before + " -> " + sortedNames(request.roles()), null);
-        return UserResponse.from(user);
+        return userMapper.toResponse(user);
     }
 
     /** Soft delete: the account disappears and can no longer sign in; its history stays. */
@@ -152,11 +155,28 @@ public class UserService {
                 "Deleted user " + user.getEmail(), null);
     }
 
+    /**
+     * Admin reset for a forgotten password. The user is signed out everywhere
+     * and should change the temporary password under Profile. Admins change
+     * their own password through Profile, which asks for the current one.
+     */
+    @Transactional
+    public void resetPassword(AuthUser actor, Long id, ResetPasswordRequest request) {
+        if (actor.getId().equals(id)) {
+            throw new BadRequestException("Change your own password from your Profile");
+        }
+        User user = load(id);
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        refreshTokenService.revokeAllForUser(user.getId());
+        activity.log(actor, ActivityActions.USER_PASSWORD_RESET, ActivityActions.ENTITY_USER, user.getId(), null,
+                "Reset the password of " + user.getEmail(), null);
+    }
+
     @Transactional
     public UserResponse updateProfile(AuthUser actor, UpdateProfileRequest request) {
         User user = load(actor.getId());
         user.setFullName(request.fullName().trim());
-        return UserResponse.from(user);
+        return userMapper.toResponse(user);
     }
 
     /** Signs the user out everywhere: all refresh tokens are revoked. */

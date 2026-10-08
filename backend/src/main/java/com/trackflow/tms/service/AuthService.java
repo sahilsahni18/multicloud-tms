@@ -9,6 +9,7 @@ import com.trackflow.tms.entity.RoleName;
 import com.trackflow.tms.entity.User;
 import com.trackflow.tms.exception.ConflictException;
 import com.trackflow.tms.exception.NotFoundException;
+import com.trackflow.tms.mapper.UserMapper;
 import com.trackflow.tms.repository.RoleRepository;
 import com.trackflow.tms.repository.UserRepository;
 import com.trackflow.tms.security.AuthUser;
@@ -17,8 +18,8 @@ import com.trackflow.tms.util.ClientInfo;
 import com.trackflow.tms.util.EmailUtils;
 import java.time.Clock;
 import java.time.Instant;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,6 +33,7 @@ public class AuthService {
 
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
+    private final UserMapper userMapper;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -84,14 +86,14 @@ public class AuthService {
     @Transactional(readOnly = true)
     public AuthUserResponse currentUser(AuthUser principal) {
         return userRepository.findByIdAndDeletedAtIsNull(principal.getId())
-                .map(AuthUserResponse::from)
+                .map(userMapper::toAuthUser)
                 .orElseThrow(() -> NotFoundException.of("User", principal.getId()));
     }
 
     private AuthResult issueTokens(AuthUser user, RefreshTokenService.IssuedRefreshToken refreshToken) {
         JwtService.IssuedToken accessToken = jwtService.issue(user);
         AuthResponse body = AuthResponse.bearer(accessToken.value(), accessToken.expiresInSeconds(),
-                AuthUserResponse.from(user));
+                userMapper.toAuthUser(user));
         return new AuthResult(body, refreshToken.rawToken(), refreshToken.expiresAt());
     }
 

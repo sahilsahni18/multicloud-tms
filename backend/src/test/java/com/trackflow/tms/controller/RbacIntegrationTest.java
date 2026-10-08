@@ -48,6 +48,8 @@ class RbacIntegrationTest extends AbstractIntegrationTest {
                 new Call("change roles", put("/api/v1/users/5/roles").content("""
                         {"roles":["ADMIN"]}"""), nonAdmins),
                 new Call("delete user", delete("/api/v1/users/5"), nonAdmins),
+                new Call("reset password", put("/api/v1/users/5/password").content("""
+                        {"newPassword":"Hijacked@123"}"""), nonAdmins),
                 new Call("list roles", get("/api/v1/roles"), nonAdmins),
                 new Call("user lookup", get("/api/v1/users/lookup"), notAdminOrPm),
                 new Call("create project", post("/api/v1/projects").content("""

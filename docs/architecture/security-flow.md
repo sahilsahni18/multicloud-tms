@@ -56,7 +56,8 @@ sequenceDiagram
 | Stolen refresh token replayed | Rotation + family revocation on reuse (logged as WARN) |
 | XSS reading tokens | Refresh token is httpOnly; access token only in memory |
 | CSRF | No cookie auth on business APIs; refresh cookie is SameSite=Strict and path-scoped |
-| Brute force | 10 requests/min/IP on login, register, refresh (per pod) |
+| Brute force | Bucket4j token bucket: 10 requests/min/IP on login, register, refresh (per pod; buckets in a bounded Caffeine cache) |
+| Forgotten password | Admin sets a temporary password (`PUT /users/{id}/password`); all the user's sessions are revoked |
 | User enumeration | Same 401 message for unknown email, wrong password, disabled account |
 | Forged / expired / foreign JWT | Signature, expiry (30 s skew) and issuer checked on every request |
 | Weak signing key | Startup fails unless the key is at least 512 bits |

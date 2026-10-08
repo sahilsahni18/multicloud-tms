@@ -1,7 +1,7 @@
 package com.trackflow.tms.security;
 
 import com.trackflow.tms.config.AppProperties;
-import com.trackflow.tms.util.FixedWindowRateLimiter;
+import com.trackflow.tms.util.IpRateLimiter;
 import jakarta.servlet.DispatcherType;
 import java.time.Clock;
 import java.time.Duration;
@@ -69,7 +69,7 @@ public class SecurityConfig {
 
         AppProperties.RateLimit rateLimit = properties.security().authRateLimit();
         if (rateLimit.enabled()) {
-            var limiter = new FixedWindowRateLimiter(rateLimit.requestsPerMinute(), Duration.ofMinutes(1), clock);
+            var limiter = new IpRateLimiter(rateLimit.requestsPerMinute(), Duration.ofMinutes(1), clock);
             http.addFilterBefore(new AuthRateLimitFilter(limiter, problems), JwtAuthenticationFilter.class);
         }
         return http.build();

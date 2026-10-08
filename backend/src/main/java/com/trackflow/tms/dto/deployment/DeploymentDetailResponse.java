@@ -1,6 +1,5 @@
 package com.trackflow.tms.dto.deployment;
 
-import com.trackflow.tms.entity.DeploymentEvent;
 import com.trackflow.tms.entity.DeploymentStatus;
 import java.time.Instant;
 import java.util.List;
@@ -15,9 +14,5 @@ public record DeploymentDetailResponse(
         List<EventResponse> events) {
 
     public record EventResponse(Long id, DeploymentStatus status, String message, Instant occurredAt) {
-
-        public static EventResponse from(DeploymentEvent e) {
-            return new EventResponse(e.getId(), e.getStatus(), e.getMessage(), e.getOccurredAt());
-        }
     }
 }

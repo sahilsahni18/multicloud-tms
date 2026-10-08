@@ -14,6 +14,7 @@ import com.trackflow.tms.entity.DeploymentStatus;
 import com.trackflow.tms.exception.BadRequestException;
 import com.trackflow.tms.exception.ConflictException;
 import com.trackflow.tms.exception.NotFoundException;
+import com.trackflow.tms.mapper.DeploymentMapper;
 import com.trackflow.tms.repository.DeploymentEventRepository;
 import com.trackflow.tms.repository.DeploymentRepository;
 import com.trackflow.tms.repository.UserRepository;
@@ -25,8 +26,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,7 @@ public class DeploymentService {
             .filter(DeploymentStatus::isTerminal).toList();
 
     private final DeploymentRepository deploymentRepository;
+    private final DeploymentMapper deploymentMapper;
     private final DeploymentEventRepository eventRepository;
     private final UserRepository userRepository;
     private final DeploymentProperties properties;
@@ -172,7 +174,7 @@ public class DeploymentService {
 
     @Transactional(readOnly = true)
     public PageResponse<DeploymentResponse> history(Pageable pageable) {
-        return PageResponse.of(deploymentRepository.findPage(pageable), DeploymentResponse::from);
+        return PageResponse.of(deploymentRepository.findPage(pageable), deploymentMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
@@ -201,10 +203,10 @@ public class DeploymentService {
     private DeploymentDetailResponse toDetail(Deployment deployment) {
         deploymentRepository.flush();
         return new DeploymentDetailResponse(
-                DeploymentResponse.from(deployment),
+                deploymentMapper.toResponse(deployment),
                 expectedSteps(deployment.getAction()),
                 eventRepository.findByDeploymentIdOrderByOccurredAtAscIdAsc(deployment.getId()).stream()
-                        .map(DeploymentDetailResponse.EventResponse::from)
+                        .map(deploymentMapper::toEvent)
                         .toList());
     }
 }

@@ -1,38 +1,54 @@
 package com.trackflow.tms.mapper;
 
-import com.trackflow.tms.dto.common.UserRef;
 import com.trackflow.tms.dto.ticket.CommentResponse;
+import com.trackflow.tms.dto.ticket.HistoryResponse;
 import com.trackflow.tms.dto.ticket.TicketDetailResponse;
+import com.trackflow.tms.dto.ticket.TicketSummaryResponse;
 import com.trackflow.tms.entity.Comment;
 import com.trackflow.tms.entity.Ticket;
+import com.trackflow.tms.entity.TicketHistory;
 import com.trackflow.tms.security.AuthUser;
 import com.trackflow.tms.service.TicketAccessPolicy;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Context;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.springframework.beans.factory.annotation.Autowired;
 
-/** Entity -> DTO for responses that depend on who is asking (permissions, allowed moves). */
-@Component
-@RequiredArgsConstructor
-public class TicketMapper {
+/**
+ * Ticket, comment and history -> API shapes. Detail and comment responses
+ * depend on who is asking (allowed moves, permissions), so they take the
+ * viewer as a {@link Context} parameter and ask {@link TicketAccessPolicy}.
+ */
+@Mapper(uses = UserMapper.class)
+public abstract class TicketMapper {
 
-    private final TicketAccessPolicy policy;
+    @Autowired
+    protected TicketAccessPolicy policy;
 
-    public TicketDetailResponse toDetail(Ticket t, AuthUser viewer) {
-        boolean manager = policy.isManager(viewer, t);
-        var permissions = new TicketDetailResponse.Permissions(
-                manager || policy.canEdit(viewer, t),
+    @Mapping(target = "projectId", source = "project.id")
+    @Mapping(target = "projectKey", source = "project.projectKey")
+    public abstract TicketSummaryResponse toSummary(Ticket ticket);
+
+    @Mapping(target = "projectId", source = "project.id")
+    @Mapping(target = "projectKey", source = "project.projectKey")
+    @Mapping(target = "projectName", source = "project.name")
+    @Mapping(target = "allowedTransitions", expression = "java(policy.allowedTransitions(viewer, ticket))")
+    @Mapping(target = "permissions", expression = "java(permissions(ticket, viewer))")
+    public abstract TicketDetailResponse toDetail(Ticket ticket, @Context AuthUser viewer);
+
+    @Mapping(target = "ticketId", source = "ticket.id")
+    @Mapping(target = "canModify", expression = "java(policy.canModifyComment(viewer, comment))")
+    public abstract CommentResponse toComment(Comment comment, @Context AuthUser viewer);
+
+    @Mapping(target = "field", source = "fieldName")
+    public abstract HistoryResponse toHistory(TicketHistory history);
+
+    protected TicketDetailResponse.Permissions permissions(Ticket ticket, AuthUser viewer) {
+        boolean manager = policy.isManager(viewer, ticket);
+        return new TicketDetailResponse.Permissions(
+                manager || policy.canEdit(viewer, ticket),
                 manager,
                 manager,
-                policy.canComment(viewer, t));
-        return new TicketDetailResponse(t.getId(), t.getKey(), t.getTitle(), t.getDescription(), t.getType(),
-                t.getPriority(), t.getStatus(), t.getProject().getId(), t.getProject().getProjectKey(),
-                t.getProject().getName(), UserRef.of(t.getAssignee()), UserRef.of(t.getReporter()), t.getDueDate(),
-                t.getCreatedAt(), t.getUpdatedAt(), t.getClosedAt(), t.getVersion(),
-                policy.allowedTransitions(viewer, t), permissions);
-    }
-
-    public CommentResponse toComment(Comment c, AuthUser viewer) {
-        return new CommentResponse(c.getId(), c.getTicket().getId(), UserRef.of(c.getAuthor()), c.getBody(),
-                c.getCreatedAt(), c.getEditedAt(), policy.canModifyComment(viewer, c));
+                policy.canComment(viewer, ticket));
     }
 }

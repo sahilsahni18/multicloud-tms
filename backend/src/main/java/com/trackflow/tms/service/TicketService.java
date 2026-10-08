@@ -73,7 +73,7 @@ public class TicketService {
                         .and(TicketSpecifications.matching(filter))
                         .and(TicketSpecifications.orderedBy(pageable.getSort())),
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()));
-        return PageResponse.of(page, TicketSummaryResponse::from);
+        return PageResponse.of(page, mapper::toSummary);
     }
 
     @Transactional(readOnly = true)
@@ -83,7 +83,7 @@ public class TicketService {
                                 .and(TicketSpecifications.matching(filter))
                                 .and(TicketSpecifications.orderedBy(pageable.getSort())),
                         PageRequest.of(0, EXPORT_LIMIT))
-                .map(TicketSummaryResponse::from)
+                .map(mapper::toSummary)
                 .getContent();
     }
 
@@ -226,7 +226,7 @@ public class TicketService {
     @Transactional(readOnly = true)
     public List<HistoryResponse> history(AuthUser user, Long id) {
         Ticket ticket = loadVisible(user, id);
-        return historyRepository.findByTicketId(ticket.getId()).stream().map(HistoryResponse::from).toList();
+        return historyRepository.findByTicketId(ticket.getId()).stream().map(mapper::toHistory).toList();
     }
 
     /** Comments and field changes merged into one chronological list (oldest first). */
@@ -235,7 +235,7 @@ public class TicketService {
         Ticket ticket = loadVisible(user, id);
         List<TimelineEntryResponse> entries = new ArrayList<>();
         historyRepository.findByTicketId(ticket.getId())
-                .forEach(h -> entries.add(TimelineEntryResponse.of(HistoryResponse.from(h))));
+                .forEach(h -> entries.add(TimelineEntryResponse.of(mapper.toHistory(h))));
         commentRepository.findLiveByTicketId(ticket.getId())
                 .forEach(c -> entries.add(TimelineEntryResponse.of(mapper.toComment(c, user))));
         entries.sort(Comparator.comparing(TimelineEntryResponse::at));

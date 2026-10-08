@@ -68,6 +68,29 @@ class UserAdminIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void adminResetsAForgottenPassword() throws Exception {
+        String email = uniqueEmail();
+        long id = createUser(email, List.of("DEVELOPER")).get("id").asLong();
+        Cookie session = refreshCookie(login(email, DEMO_PASSWORD));
+
+        putAs(ADMIN, Map.of("newPassword", "short"), "/api/v1/users/{id}/password", id)
+                .andExpect(status().isBadRequest());
+        putAs(ADMIN, Map.of("newPassword", "Temporary@2026"), "/api/v1/users/{id}/password", id)
+                .andExpect(status().isNoContent());
+
+        assertThat(loginStatus(email, DEMO_PASSWORD)).isEqualTo(401);
+        assertThat(loginStatus(email, "Temporary@2026")).isEqualTo(200);
+        mvc.perform(post("/api/v1/auth/refresh").cookie(session)).andExpect(status().isUnauthorized());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM activity_logs WHERE action = 'USER_PASSWORD_RESET' AND entity_id = ?",
+                Integer.class, id)).isEqualTo(1);
+
+        // Admins use Profile (which checks the current password) for their own.
+        putAs(ADMIN, Map.of("newPassword", "Temporary@2026"), "/api/v1/users/{id}/password", ADMIN_ID)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void adminCannotLockThemselvesOut() throws Exception {
         deleteAs(ADMIN, "/api/v1/users/{id}", ADMIN_ID).andExpect(status().isBadRequest());
         putAs(ADMIN, Map.of("roles", List.of("USER")), "/api/v1/users/{id}/roles", ADMIN_ID)
