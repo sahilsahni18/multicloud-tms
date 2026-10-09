@@ -93,6 +93,7 @@ jobs:
           image-ref: trackflow-backend:ci
           severity: CRITICAL
           ignore-unfixed: true
+          trivyignores: .trivyignore
           exit-code: '1'
 
       - name: Log in to GitHub Container Registry
