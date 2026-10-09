@@ -54,6 +54,12 @@ patches:
       - op: replace
         path: /data/APP_REGION
         value: local
+      # kind maps host 8088 to the ingress on 80, so the backend sees port 80
+      # while the browser sends Origin :8088; without this, Spring rejects
+      # the SPA's own POSTs as cross-origin ("Invalid CORS request").
+      - op: replace
+        path: /data/CORS_ALLOWED_ORIGINS
+        value: http://localhost:8088
   # Wait for MySQL before starting Spring (cloud databases are always up).
   - target:
       kind: Deployment
