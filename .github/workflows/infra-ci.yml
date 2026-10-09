@@ -1,0 +1,38 @@
+name: Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**', '.github/workflows/infra-ci.yml']
+  pull_request:
+    paths: ['infra/**', '.github/workflows/infra-ci.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Format and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.x
+
+      - name: Format
+        run: tofu fmt -check -recursive -diff infra
+
+      # No backend and no credentials: checks syntax, types and module wiring.
+      # `tofu plan` against the real clouds needs the bootstrap outputs (Step 8).
+      - name: Validate stacks
+        run: |
+          for stack in infra/bootstrap infra/envs/*/*/; do
+            echo "::group::$stack"
+            tofu -chdir="$stack" init -backend=false -input=false
+            tofu -chdir="$stack" validate
+            echo "::endgroup::"
+          done

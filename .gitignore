@@ -35,3 +35,5 @@ tfplan
 crash.log
 *.auto.tfvars
 !*.example.auto.tfvars
+terraform.tfvars
+backend.hcl

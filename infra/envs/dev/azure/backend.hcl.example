@@ -1,0 +1,6 @@
+# Copy to backend.hcl (gitignored); values come from `tofu output` in infra/bootstrap.
+resource_group_name  = "trackflow-tfstate"
+storage_account_name = "tftfstatexxxxxx"
+container_name       = "tfstate"
+key                  = "dev/azure.tfstate"
+use_azuread_auth     = true # your az login / GitHub OIDC, no storage keys

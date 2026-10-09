@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (gitignored).
+traffic_manager_dns_name = "trackflow-dev-yourname" # must match the Azure stack
+admin_role_arns          = ["arn:aws:iam::123456789012:role/trackflow-github-actions"]
+# domain_name            = "example.com"            # only if you own a Route 53 zone
