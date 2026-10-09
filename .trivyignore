@@ -1,7 +1,15 @@
 # Vulnerabilities accepted after review. Each entry needs a reason and a
 # revisit trigger; remove it as soon as a fixed version is adopted.
 
-# spring-webmvc 6.2.x: RCE via XsltView path handling. Only fixed in Spring 7
-# (Boot 4). TrackFlow is a JSON API and never uses XsltView or any view
-# resolver. Revisit on the Boot 4 upgrade.
+# The two spring-webmvc entries below are fixed in 6.2.20, which is not on
+# Maven Central (OSS 6.2 patches have ended), and in Spring 7 (Boot 4).
+# Revisit on the Boot 4 upgrade.
+
+# XsltView SSRF/RCE. TrackFlow is a JSON API and never uses XsltView or any
+# view resolver.
 CVE-2026-47884
+
+# SSE stream corruption, only "when using Server-Sent Events with view
+# fragments". DeploymentStreamService sends JSON DTOs through SseEmitter and
+# never renders view fragments.
+CVE-2026-47890
