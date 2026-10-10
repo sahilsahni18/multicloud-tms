@@ -1,6 +1,6 @@
 variable "repositories" {
   type    = list(string)
-  default = ["trackflow-backend"]
+  default = ["trackflow-backend", "trackflow-frontend"]
 }
 
 variable "keep_images" {

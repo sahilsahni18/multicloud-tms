@@ -11,3 +11,4 @@ data:
   CORS_ALLOWED_ORIGINS: https://set-by-deploy-workflow
   APP_CLOUD: set-by-deploy-workflow
   APP_REGION: set-by-deploy-workflow
+  REFRESH_COOKIE_SECURE: "true"

@@ -1,4 +1,4 @@
-# Backend image repository. The AWS Free plan blocks ECR cross-region
+# Backend and frontend image repositories. The AWS Free plan blocks ECR cross-region
 # replication, so the stack creates one per region and CI pushes to both.
 
 terraform {

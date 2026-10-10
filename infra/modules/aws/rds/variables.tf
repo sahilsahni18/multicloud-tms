@@ -45,7 +45,7 @@ variable "username" {
 }
 
 variable "backup_retention_days" {
-  description = "Automated backups are the DR source (RPO <= 24 h). Must be > 0 for replicas."
+  description = "Automated backups are the DR source (RPO <= 24 h). Must be > 0 for replicas. Free-plan accounts may reject more than 1 day; raise it on a paid account."
   type        = number
-  default     = 7
+  default     = 1
 }

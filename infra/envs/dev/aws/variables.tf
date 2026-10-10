@@ -34,9 +34,12 @@ variable "kubernetes_version" {
   default = "1.33"
 }
 
+# The AWS Free plan only launches Free-plan-eligible types
+# (aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true).
+# c7i-flex.large matches t3.medium (2 vCPU / 4 GiB) and is eligible.
 variable "node_instance_type" {
   type    = string
-  default = "t3.medium"
+  default = "c7i-flex.large"
 }
 
 variable "admin_role_arns" {
@@ -54,6 +57,12 @@ variable "domain_name" {
   description = "Existing Route 53 zone for app./api. records. Empty = use the CloudFront and Traffic Manager hostnames."
   type        = string
   default     = ""
+}
+
+variable "enable_cloudfront" {
+  description = "S3 + CloudFront for the SPA. Needs an AWS account verified for CloudFront (new accounts are not)."
+  type        = bool
+  default     = false
 }
 
 variable "enable_replicas" {

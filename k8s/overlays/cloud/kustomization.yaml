@@ -1,11 +1,12 @@
-# EKS and AKS: backend only (the SPA is served from CloudFront / Static Web
-# Apps), databases are RDS / MySQL Flexible outside the cluster.
+# EKS and AKS: backend + the SPA (nginx, proxies /api to the backend), so the
+# Traffic Manager hostname serves the whole app from one origin and fails over
+# as a unit. Databases are RDS / MySQL Flexible outside the cluster.
 #
 # The deploy workflow (.github/workflows/deploy.yml), per cluster:
 #   1. overwrites cluster-patch.yaml with that cluster's cloud, region, DB URL
 #      and allowed origins (values from `tofu output`),
 #   2. creates the backend-secrets Secret (DB password, JWT key from state),
-#   3. pins the image:  kustomize edit set image trackflow-backend=<registry>/trackflow-backend:<sha>
+#   3. pins the images: kustomize edit set image trackflow-backend=<registry>/trackflow-backend:<sha> (same for frontend)
 #   4. kubectl apply -k k8s/overlays/cloud
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -15,10 +16,14 @@ namespace: trackflow
 resources:
   - namespace.yaml
   - ../../base
+  - ../../frontend
 
 images:
   - name: trackflow-backend
     newName: trackflow-backend
+    newTag: set-by-deploy-workflow
+  - name: trackflow-frontend
+    newName: trackflow-frontend
     newTag: set-by-deploy-workflow
 
 patches:

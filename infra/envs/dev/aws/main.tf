@@ -3,7 +3,10 @@
 #   us-east-1 (primary)          us-west-2 (standby)
 #   VPC 10.10/16  <-- peering -->  VPC 10.20/16
 #   EKS + ECR + RDS               EKS + ECR  (backend uses the us-east-1 RDS)
-#   S3 + CloudFront (SPA, /api -> Traffic Manager)
+#   S3 + CloudFront (SPA, /api -> Traffic Manager), behind enable_cloudfront
+#
+# The SPA itself also runs in every cluster (k8s/frontend), so
+# http://<traffic manager>/ serves app + API from one origin with failover.
 #
 # Traffic Manager itself lives in the Azure stack; only its hostname is used here.
 
@@ -193,7 +196,11 @@ resource "aws_db_instance" "replica" {
 
 # ----------------------------------------------------------------- frontend --
 
+# New AWS accounts cannot create CloudFront distributions until AWS Support
+# verifies them ("Your account must be verified before you can add new
+# CloudFront resources"). Off by default; the clusters serve the SPA meanwhile.
 module "frontend" {
+  count     = var.enable_cloudfront ? 1 : 0
   source    = "../../../modules/aws/frontend"
   providers = { aws = aws.primary }
 
@@ -202,13 +209,13 @@ module "frontend" {
 }
 
 module "dns" {
-  count     = var.domain_name == "" ? 0 : 1
+  count     = var.domain_name != "" && var.enable_cloudfront ? 1 : 0
   source    = "../../../modules/aws/route53"
   providers = { aws = aws.primary }
 
   zone_name                 = var.domain_name
-  cloudfront_domain_name    = module.frontend.domain_name
-  cloudfront_hosted_zone_id = module.frontend.hosted_zone_id
+  cloudfront_domain_name    = module.frontend[0].domain_name
+  cloudfront_hosted_zone_id = module.frontend[0].hosted_zone_id
   api_target_fqdn           = local.api_fqdn
 }
 

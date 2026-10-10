@@ -4,10 +4,11 @@ name: Deploy to cloud
 # workflow created, then points Traffic Manager at them and publishes the SPA.
 #
 #   context  -> reads `tofu output` from the remote state (no tofu init needed)
-#   build    -> one backend image, pushed to ECR (both regions) and ACR
-#   deploy   -> per cluster: ingress-nginx, Secret, ConfigMap, backend rollout
+#   build    -> backend + frontend images, pushed to ECR (both regions) and ACR
+#   deploy   -> per cluster: ingress-nginx, Secret, ConfigMap, backend + SPA rollout
 #   traffic  -> Traffic Manager endpoints = the clusters' load balancers
-#   frontend -> SPA to S3 + CloudFront and to Static Web Apps
+#   frontend -> extra SPA copies on S3 + CloudFront and Static Web Apps (only
+#               when CloudFront is enabled: they need an HTTPS API origin)
 #
 # Runs on demand, and after a green Backend CI on main while the repository
 # variable CLOUD_UP is 'true' (set it at the start of a cloud session).
@@ -67,8 +68,9 @@ jobs:
           aws s3 cp "$AWS_STATE" aws.json --only-show-errors
           az storage blob download --auth-mode login --account-name "$AZ_STATE_SA" \
             -c tfstate -n dev/azure.tfstate -f az.json -o none
-          ecr_p=$(jq -r '.outputs.ecr_repositories.value["us-east-1"]["trackflow-backend"]' aws.json)
-          ecr_s=$(jq -r '.outputs.ecr_repositories.value["us-west-2"]["trackflow-backend"]' aws.json)
+          # Registry prefixes; images are <prefix>/trackflow-backend and /trackflow-frontend.
+          ecr_p=$(jq -r '.outputs.ecr_repositories.value["us-east-1"]["trackflow-backend"]' aws.json | sed 's#/trackflow-backend$##')
+          ecr_s=$(jq -r '.outputs.ecr_repositories.value["us-west-2"]["trackflow-backend"]' aws.json | sed 's#/trackflow-backend$##')
           acr=$(jq -r '.outputs.acr_login_server.value' az.json)
 
           # One matrix entry per cluster, in Traffic Manager priority order:
@@ -76,13 +78,13 @@ jobs:
           clusters=$(jq -nc \
             --argjson eks "$(jq -c '.outputs.eks_clusters.value' aws.json)" \
             --argjson aks "$(jq -c '.outputs.aks_clusters.value' az.json)" \
-            --arg ecr_p "$ecr_p" --arg ecr_s "$ecr_s" --arg acr "$acr/trackflow-backend" \
+            --arg ecr_p "$ecr_p" --arg ecr_s "$ecr_s" --arg acr "$acr" \
             --arg az_p "$(jq -r '.outputs.azure_primary_location.value' az.json)" \
             --arg az_s "$(jq -r '.outputs.azure_standby_location.value' az.json)" '
-            [ ($eks["us-east-1"][] | {cloud: "aws",   region: "us-east-1", cluster: ., image: $ecr_p}),
-              ($eks["us-west-2"][] | {cloud: "aws",   region: "us-west-2", cluster: ., image: $ecr_s}),
-              ($aks[$az_p][]       | {cloud: "azure", region: $az_p,       cluster: ., image: $acr}),
-              ($aks[$az_s][]       | {cloud: "azure", region: $az_s,       cluster: ., image: $acr}) ]
+            [ ($eks["us-east-1"][] | {cloud: "aws",   region: "us-east-1", cluster: ., registry: $ecr_p}),
+              ($eks["us-west-2"][] | {cloud: "aws",   region: "us-west-2", cluster: ., registry: $ecr_s}),
+              ($aks[$az_p][]       | {cloud: "azure", region: $az_p,       cluster: ., registry: $acr}),
+              ($aks[$az_s][]       | {cloud: "azure", region: $az_s,       cluster: ., registry: $acr}) ]
             | to_entries | map(.value + {priority: (.key + 1)})')
           {
             echo "clusters=$clusters"
@@ -98,7 +100,7 @@ jobs:
           rm aws.json az.json
 
   build:
-    name: Build and push backend image
+    name: Build and push images
     needs: context
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -117,7 +119,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - uses: docker/setup-buildx-action@v4
 
-      - name: Build
+      - name: Build backend
         uses: docker/build-push-action@v7
         with:
           context: backend
@@ -125,6 +127,14 @@ jobs:
           tags: trackflow-backend:${{ env.SHA }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
+      - name: Build frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          load: true
+          tags: trackflow-frontend:${{ env.SHA }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
       # ECR tags are immutable, so a re-run for the same commit skips the push.
       - name: Push to ECR (both regions) and ACR
@@ -135,17 +145,20 @@ jobs:
         run: |
           for pair in "us-east-1 $ECR_P" "us-west-2 $ECR_S"; do
             set -- $pair
-            aws ecr get-login-password --region "$1" | docker login -u AWS --password-stdin "${2%%/*}"
-            if aws ecr describe-images --region "$1" --repository-name trackflow-backend \
-                 --image-ids imageTag="$SHA" >/dev/null 2>&1; then
-              echo "$2:$SHA already pushed"
-            else
-              docker tag "trackflow-backend:$SHA" "$2:$SHA" && docker push -q "$2:$SHA"
-            fi
+            aws ecr get-login-password --region "$1" | docker login -u AWS --password-stdin "$2"
+            for img in trackflow-backend trackflow-frontend; do
+              if aws ecr describe-images --region "$1" --repository-name "$img" \
+                   --image-ids imageTag="$SHA" >/dev/null 2>&1; then
+                echo "$2/$img:$SHA already pushed"
+              else
+                docker tag "$img:$SHA" "$2/$img:$SHA" && docker push -q "$2/$img:$SHA"
+              fi
+            done
           done
           az acr login -n "${ACR%%.*}"
-          docker tag "trackflow-backend:$SHA" "$ACR/trackflow-backend:$SHA"
-          docker push -q "$ACR/trackflow-backend:$SHA"
+          for img in trackflow-backend trackflow-frontend; do
+            docker tag "$img:$SHA" "$ACR/$img:$SHA" && docker push -q "$ACR/$img:$SHA"
+          done
 
   deploy:
     name: ${{ matrix.cloud }} ${{ matrix.cluster }}
@@ -207,7 +220,9 @@ jobs:
           echo "::add-mask::$db_password"; echo "::add-mask::$jwt"
           rm state.json
 
-          # The SPA is served from CloudFront (primary) and Static Web Apps (standby).
+          # Browsers drop Secure cookies on plain http, so the refresh cookie is
+          # Secure only when the app is served over https (CloudFront).
+          secure=$([ "${APP_URL#https://}" != "$APP_URL" ] && echo true || echo false)
           printf '%s\n' \
             'apiVersion: v1' \
             'kind: ConfigMap' \
@@ -219,6 +234,7 @@ jobs:
             "  CORS_ALLOWED_ORIGINS: \"$APP_URL,$SWA_URL\"" \
             "  APP_CLOUD: ${{ matrix.cloud }}" \
             "  APP_REGION: ${{ matrix.region }}" \
+            "  REFRESH_COOKIE_SECURE: \"$secure\"" \
             > k8s/overlays/cloud/cluster-patch.yaml
 
           kubectl apply -f k8s/overlays/cloud/namespace.yaml
@@ -228,14 +244,17 @@ jobs:
             --from-literal=JWT_SECRET="$jwt" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Roll out backend
+      - name: Roll out backend and SPA
         working-directory: k8s/overlays/cloud
         run: |
-          kustomize edit set image "trackflow-backend=${{ matrix.image }}:$SHA"
+          kustomize edit set image \
+            "trackflow-backend=${{ matrix.registry }}/trackflow-backend:$SHA" \
+            "trackflow-frontend=${{ matrix.registry }}/trackflow-frontend:$SHA"
           kubectl apply -k .
           # Picks up a changed Secret even when the image tag is unchanged.
           kubectl -n trackflow rollout restart deployment/backend
           kubectl -n trackflow rollout status deployment/backend --timeout=10m
+          kubectl -n trackflow rollout status deployment/frontend --timeout=5m
 
       - name: Load balancer address
         id: lb
@@ -307,10 +326,18 @@ jobs:
             -backend-config="use_oidc=true"
           # Only Traffic Manager changes; the clusters and database are untouched.
           tofu apply -input=false -auto-approve -target=module.traffic_manager
+          {
+            echo "### Deployed ${SHA:0:7}"
+            echo "- App: http://${{ vars.TM_DNS_NAME }}.trafficmanager.net"
+            echo "- Health: http://${{ vars.TM_DNS_NAME }}.trafficmanager.net/actuator/health"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
-    name: Publish the SPA
+    name: Publish extra SPA copies
     needs: [context, deploy]
+    # S3/CloudFront exists only with enable_cloudfront; the Static Web Apps copy
+    # needs an HTTPS API (an https page cannot call an http API).
+    if: startsWith(needs.context.outputs.app_url, 'https://')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -374,8 +401,6 @@ jobs:
       - name: Summary
         run: |
           {
-            echo "### Deployed ${SHA:0:7}"
-            echo "- App (CloudFront): ${{ needs.context.outputs.app_url }}"
-            echo "- App (Static Web Apps): ${{ needs.context.outputs.swa_url }}"
-            echo "- API health: http://${{ vars.TM_DNS_NAME }}.trafficmanager.net/actuator/health"
+            echo "- CloudFront copy: ${{ needs.context.outputs.app_url }}"
+            echo "- Static Web Apps copy: ${{ needs.context.outputs.swa_url }}"
           } >> "$GITHUB_STEP_SUMMARY"

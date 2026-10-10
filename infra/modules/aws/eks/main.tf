@@ -106,13 +106,15 @@ resource "aws_eks_access_policy_association" "admin" {
 resource "aws_eks_node_group" "this" {
   for_each = local.clusters
 
-  cluster_name    = aws_eks_cluster.this[each.key].name
-  node_group_name = "default"
-  node_role_arn   = aws_iam_role.node.arn
-  subnet_ids      = var.subnet_ids
-  instance_types  = [var.node_instance_type]
-  capacity_type   = var.node_capacity_type
-  disk_size       = 20
+  cluster_name = aws_eks_cluster.this[each.key].name
+  # A prefix (not a fixed name) lets a new group come up before the old one is
+  # removed when the instance type changes.
+  node_group_name_prefix = "nodes-"
+  node_role_arn          = aws_iam_role.node.arn
+  subnet_ids             = var.subnet_ids
+  instance_types         = [var.node_instance_type]
+  capacity_type          = var.node_capacity_type
+  disk_size              = 20
 
   scaling_config {
     desired_size = var.node_count
@@ -122,6 +124,10 @@ resource "aws_eks_node_group" "this" {
 
   update_config {
     max_unavailable = 1
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 
   depends_on = [aws_iam_role_policy_attachment.node]

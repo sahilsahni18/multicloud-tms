@@ -20,10 +20,10 @@ those with Static Web Apps. AWS keeps us-east-1 + us-west-2.
 
 | Concern | AWS | Azure |
 |---|---|---|
-| Clusters | EKS in both regions, 1 x t3.medium node each | AKS (Free tier) in both regions, 1 x B2als v2 node each |
+| Clusters | EKS in both regions, 1 x c7i-flex.large node each (Free-plan eligible) | AKS (Free tier) in both regions, 1 x B2als v2 node each |
 | Images | ECR in both regions (CI pushes to both) | One ACR, both clusters pull from it |
 | Database | One RDS (db.t4g.micro) in us-east-1; us-west-2 reaches it over VPC peering | One MySQL Flexible (B1ms) in eastasia; koreacentral admitted by its static egress IP |
-| Frontend | S3 + CloudFront; `/api/*` forwarded to Traffic Manager (one origin, no CORS) | Static Web Apps (standby copy) |
+| Frontend | The SPA runs in every cluster, so `http://<name>.trafficmanager.net` serves app + API with failover. S3 + CloudFront behind `enable_cloudfront` (new AWS accounts need Support verification first) | Static Web Apps copy (published when CloudFront/HTTPS is on) |
 | Failover | — | Traffic Manager, priority 1–4 across all four clusters, probing `/actuator/health` |
 | DNS | Route 53 records only if you own a domain (`domain_name`) | `<name>.trafficmanager.net` |
 

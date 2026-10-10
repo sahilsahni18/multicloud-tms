@@ -28,16 +28,21 @@ output "db_password" {
 }
 
 output "frontend_bucket" {
-  value = module.frontend.bucket
+  description = "Empty while CloudFront is disabled."
+  value       = var.enable_cloudfront ? module.frontend[0].bucket : ""
 }
 
 output "cloudfront_distribution_id" {
-  value = module.frontend.distribution_id
+  value = var.enable_cloudfront ? module.frontend[0].distribution_id : ""
 }
 
 output "app_url" {
-  description = "Also the CORS origin the backend must allow."
-  value       = var.domain_name == "" ? "https://${module.frontend.domain_name}" : "https://${module.dns[0].app_fqdn}"
+  description = "Where users open the app; also a CORS origin the backend allows."
+  value = (
+    !var.enable_cloudfront ? "http://${local.api_fqdn}" :
+    var.domain_name == "" ? "https://${module.frontend[0].domain_name}" :
+    "https://${module.dns[0].app_fqdn}"
+  )
 }
 
 output "api_fqdn" {

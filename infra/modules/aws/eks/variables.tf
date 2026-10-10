@@ -25,9 +25,9 @@ variable "subnet_ids" {
 }
 
 variable "node_instance_type" {
-  description = "2 vCPU / 4 GiB fits the backend (2 x 512Mi), ingress and system pods."
+  description = "2 vCPU / 4 GiB fits the backend (2 x 512Mi), ingress and system pods. Must be Free-plan eligible on a Free plan account (c7i-flex.large is; t3.medium is not)."
   type        = string
-  default     = "t3.medium"
+  default     = "c7i-flex.large"
 }
 
 variable "node_capacity_type" {
