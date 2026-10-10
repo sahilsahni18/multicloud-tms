@@ -1,5 +1,7 @@
 # Copy to terraform.tfvars (gitignored) and fill in.
 github_repository     = "your-user/multicloud-tms"
 azure_subscription_id = "00000000-0000-0000-0000-000000000000"
+# gh api repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix
+github_immutable_subject_prefix = "repo:your-user@123/multicloud-tms@456"
 # aws_region          = "us-east-1"
 # azure_location      = "eastasia"

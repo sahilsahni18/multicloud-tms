@@ -8,6 +8,17 @@ variable "github_repository" {
   }
 }
 
+variable "github_immutable_subject_prefix" {
+  description = <<-EOT
+    OIDC subject prefix when the repo uses immutable subjects, e.g.
+    repo:octocat@123/multicloud-tms@456. Find it with:
+    gh api repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix
+    Empty = classic subjects only.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "aws_region" {
   description = "Region for the S3 state bucket."
   type        = string

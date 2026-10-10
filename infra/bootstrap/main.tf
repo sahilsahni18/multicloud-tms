@@ -52,12 +52,21 @@ locals {
   # Workflows on main, pull requests, and the two GitHub environments used by
   # .github/workflows/cloud.yml ("cloud" = apply with approval, "cloud-teardown"
   # = plan/destroy) may assume the roles.
-  github_subjects = [
-    "repo:${var.github_repository}:ref:refs/heads/main",
-    "repo:${var.github_repository}:environment:cloud",
-    "repo:${var.github_repository}:environment:cloud-teardown",
-    "repo:${var.github_repository}:pull_request",
-  ]
+  # GitHub sends either the classic subject (repo:owner/name:...) or, with
+  # immutable subjects on, one that embeds the owner and repo IDs
+  # (repo:owner@123/name@456:...). Both are trusted.
+  github_subject_prefixes = compact([
+    "repo:${var.github_repository}",
+    var.github_immutable_subject_prefix,
+  ])
+  github_subjects = flatten([
+    for p in local.github_subject_prefixes : [
+      "${p}:ref:refs/heads/main",
+      "${p}:environment:cloud",
+      "${p}:environment:cloud-teardown",
+      "${p}:pull_request",
+    ]
+  ])
 }
 
 resource "random_string" "suffix" {
