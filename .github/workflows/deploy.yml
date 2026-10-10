@@ -6,7 +6,8 @@ name: Deploy to cloud
 #   context  -> reads `tofu output` from the remote state (no tofu init needed)
 #   build    -> backend + frontend images, pushed to ECR (both regions) and ACR
 #   deploy   -> per cluster: ingress-nginx, Secret, ConfigMap, backend + SPA rollout
-#   traffic  -> Traffic Manager endpoints = the clusters' load balancers
+#   traffic  -> Traffic Manager endpoints = each cluster's public address
+#               (Azure load balancer IP, AWS node IP)
 #   frontend -> extra SPA copies on S3 + CloudFront and Static Web Apps (only
 #               when CloudFront is enabled: they need an HTTPS API origin)
 #
@@ -195,12 +196,23 @@ jobs:
           fi
           kubectl get nodes
 
-      # Same controller version as kind (scripts/kind-up.sh). The AWS variant
-      # fronts it with an NLB; the generic cloud variant gets an Azure LB.
+      # Same controller version as kind (scripts/kind-up.sh).
+      # Azure: the generic cloud manifest, fronted by an Azure load balancer.
+      # AWS: new accounts cannot create load balancers until AWS Support enables
+      # them, so the controller listens on the node's public IP (hostPort 80,
+      # opened by the eks module) behind a NodePort Service.
       - name: Ingress controller
         run: |
-          provider=$([ "${{ matrix.cloud }}" = aws ] && echo aws || echo cloud)
-          kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/$provider/deploy.yaml"
+          base=https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider
+          if [ "${{ matrix.cloud }}" = aws ]; then
+            kubectl apply -f "$base/baremetal/deploy.yaml"
+            idx=$(kubectl -n ingress-nginx get deployment ingress-nginx-controller -o json \
+              | jq '.spec.template.spec.containers[0].ports | map(.name) | index("http")')
+            kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type=json \
+              -p "[{\"op\":\"add\",\"path\":\"/spec/template/spec/containers/0/ports/$idx/hostPort\",\"value\":80}]"
+          else
+            kubectl apply -f "$base/cloud/deploy.yaml"
+          fi
           kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=5m
 
       - name: Configuration and secrets
@@ -256,18 +268,25 @@ jobs:
           kubectl -n trackflow rollout status deployment/backend --timeout=10m
           kubectl -n trackflow rollout status deployment/frontend --timeout=5m
 
-      - name: Load balancer address
+      - name: Public address
         id: lb
         run: |
           addr=""
-          for i in $(seq 1 60); do
-            addr=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
-              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}{.status.loadBalancer.ingress[0].ip}')
-            [ -n "$addr" ] && break; sleep 10
-          done
-          [ -n "$addr" ] || { echo "No load balancer address after 10 minutes"; exit 1; }
+          if [ "${{ matrix.cloud }}" = aws ]; then
+            # The node running the ingress controller (hostPort 80).
+            node=$(kubectl -n ingress-nginx get pod -l app.kubernetes.io/component=controller \
+              -o jsonpath='{.items[0].spec.nodeName}')
+            addr=$(kubectl get node "$node" -o jsonpath='{.status.addresses[?(@.type=="ExternalIP")].address}')
+          else
+            for i in $(seq 1 60); do
+              addr=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+                -o jsonpath='{.status.loadBalancer.ingress[0].hostname}{.status.loadBalancer.ingress[0].ip}')
+              [ -n "$addr" ] && break; sleep 10
+            done
+          fi
+          [ -n "$addr" ] || { echo "No public address after 10 minutes"; \
+            kubectl -n ingress-nginx describe svc ingress-nginx-controller | tail -5; exit 1; }
           echo "addr=$addr" >> "$GITHUB_OUTPUT"
-          # A new NLB name takes a minute or two to resolve.
           for i in $(seq 1 30); do
             curl -fsS --max-time 5 "http://$addr/actuator/health" && exit 0; sleep 10
           done

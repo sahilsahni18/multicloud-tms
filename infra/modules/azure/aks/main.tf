@@ -71,3 +71,15 @@ resource "azurerm_role_assignment" "acr_pull" {
   principal_id                     = each.value.kubelet_identity[0].object_id
   skip_service_principal_aad_check = true
 }
+
+# The egress IP lives in our resource group, not the cluster's node resource
+# group, so the cluster identity needs join rights on it; without this the
+# cloud controller fails every load balancer with LinkedAuthorizationFailed.
+resource "azurerm_role_assignment" "egress_ip" {
+  for_each = azurerm_kubernetes_cluster.this
+
+  scope                            = azurerm_public_ip.egress[each.key].id
+  role_definition_name             = "Network Contributor"
+  principal_id                     = each.value.identity[0].principal_id
+  skip_service_principal_aad_check = true
+}

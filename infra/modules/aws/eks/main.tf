@@ -142,3 +142,17 @@ resource "aws_eks_addon" "metrics_server" {
 
   depends_on = [aws_eks_node_group.this]
 }
+
+# New AWS accounts cannot create load balancers until AWS Support enables them,
+# so the ingress controller listens on each node's public IP (hostPort 80) and
+# Traffic Manager points there. Nodes already sit in public subnets.
+resource "aws_vpc_security_group_ingress_rule" "http" {
+  for_each = var.public_http ? aws_eks_cluster.this : {}
+
+  security_group_id = each.value.vpc_config[0].cluster_security_group_id
+  description       = "HTTP to the ingress controller (hostPort 80)"
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+}

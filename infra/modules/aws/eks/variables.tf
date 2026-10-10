@@ -46,3 +46,9 @@ variable "admin_role_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "public_http" {
+  description = "Allow HTTP (80) from the internet to the nodes, for the hostPort ingress."
+  type        = bool
+  default     = true
+}
