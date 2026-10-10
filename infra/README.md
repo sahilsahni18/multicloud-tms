@@ -59,8 +59,29 @@ Free-tier limits are flags, not redesigns: `enable_replicas` (RDS cross-region r
 - Never upgrade the AWS account from the Free plan.
 - No secrets in Git: state lives in the private bucket/container, `terraform.tfvars` and `backend.hcl` are gitignored, and GitHub reaches the clouds through OIDC.
 
-## Open items for Step 8
+## Cloud session (Step 8)
 
-- Kustomize `aws` and `azure` overlays (ingress-nginx, image registry, DB URL from `tofu output`).
-- Backend `CORS_ALLOWED_ORIGINS`: CloudFront forwards `/api` with the Traffic Manager host, so the CloudFront URL (`app_url` output) must be allowed.
-- The Static Web Apps copy calls the API cross-site, where the `SameSite=Strict` refresh cookie is not sent; decide between `SameSite=None` + HTTPS on the API, or treating SWA as a read-only standby.
+Everything runs from GitHub Actions with OIDC; nothing costly starts without you.
+
+**Once, before the first session**
+
+1. `cd infra/bootstrap && tofu apply bootstrap.tfplan` (you run this; ~US$0).
+2. From `tofu output`, add repository **variables** (Settings → Secrets and variables → Actions → Variables):
+   `AWS_ROLE_ARN`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+   `TF_STATE_BUCKET` (= `aws_state_bucket`), `AZ_STATE_RG` (= `trackflow-tfstate`),
+   `AZ_STATE_SA` (= `azure_state_storage_account`), `TM_DNS_NAME` (= `trackflow-dev-sahil`),
+   and optionally `AWS_ADMIN_USER_ARN` (your `tms-admin` ARN, for local `kubectl`).
+3. Settings → Environments: create **`cloud`** with yourself as required reviewer, and **`cloud-teardown`** with no rules.
+
+**Each session**
+
+| # | Action | Workflow |
+|---|---|---|
+| 1 | Create both clouds (approve the `cloud` environment prompt; ~25 min) | *Cloud infrastructure* → `apply`, `both` |
+| 2 | Deploy backend to 4 clusters, wire Traffic Manager, publish the SPA (~15 min) | *Deploy to cloud* → Run workflow |
+| 3 | Demo: app at the CloudFront URL; failover = `kubectl -n trackflow scale deploy/backend --replicas=0` on us-east-1 | — |
+| 4 | **Tear down the same day** | *Cloud infrastructure* → `destroy`, `both` |
+
+The destroy job deletes the ingress load balancers (created by Kubernetes, not OpenTofu) before `tofu destroy`. A scheduled run at 02:00 IST destroys anything still up. Set the `CLOUD_UP` variable to `true` during a session if every green Backend CI on `main` should redeploy automatically.
+
+**Known limitation:** the Static Web Apps copy calls the API cross-site, so the `SameSite=Strict` refresh cookie is not sent there: sessions on that copy last one access-token lifetime (15 min). The CloudFront copy is unaffected.

@@ -49,10 +49,13 @@ locals {
     managed-by = "opentofu"
     stack      = "bootstrap"
   }
-  # Branch pushes and the "cloud" GitHub environment may assume the roles.
+  # Workflows on main, pull requests, and the two GitHub environments used by
+  # .github/workflows/cloud.yml ("cloud" = apply with approval, "cloud-teardown"
+  # = plan/destroy) may assume the roles.
   github_subjects = [
     "repo:${var.github_repository}:ref:refs/heads/main",
     "repo:${var.github_repository}:environment:cloud",
+    "repo:${var.github_repository}:environment:cloud-teardown",
     "repo:${var.github_repository}:pull_request",
   ]
 }

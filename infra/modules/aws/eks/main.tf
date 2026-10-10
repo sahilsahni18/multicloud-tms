@@ -126,3 +126,13 @@ resource "aws_eks_node_group" "this" {
 
   depends_on = [aws_iam_role_policy_attachment.node]
 }
+
+# The backend HPA scales on CPU, which needs metrics-server (AKS has it built in).
+resource "aws_eks_addon" "metrics_server" {
+  for_each = local.clusters
+
+  cluster_name = aws_eks_cluster.this[each.key].name
+  addon_name   = "metrics-server"
+
+  depends_on = [aws_eks_node_group.this]
+}

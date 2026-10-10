@@ -1,4 +1,4 @@
-# 2-6 pods at 70% CPU (needs metrics-server; EKS/AKS have it, kind does not).
+# 2-6 pods at 70% CPU (needs metrics-server: built into AKS, an add-on on EKS, absent on kind).
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

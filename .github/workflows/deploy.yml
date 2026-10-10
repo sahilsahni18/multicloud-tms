@@ -1,0 +1,381 @@
+name: Deploy to cloud
+
+# Rolls the current commit out to every cluster the "Cloud infrastructure"
+# workflow created, then points Traffic Manager at them and publishes the SPA.
+#
+#   context  -> reads `tofu output` from the remote state (no tofu init needed)
+#   build    -> one backend image, pushed to ECR (both regions) and ACR
+#   deploy   -> per cluster: ingress-nginx, Secret, ConfigMap, backend rollout
+#   traffic  -> Traffic Manager endpoints = the clusters' load balancers
+#   frontend -> SPA to S3 + CloudFront and to Static Web Apps
+#
+# Runs on demand, and after a green Backend CI on main while the repository
+# variable CLOUD_UP is 'true' (set it at the start of a cloud session).
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Backend CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  AWS_STATE: s3://${{ vars.TF_STATE_BUCKET }}/dev/aws.tfstate
+  AZ_STATE_SA: ${{ vars.AZ_STATE_SA }}
+
+jobs:
+  context:
+    name: Read infrastructure outputs
+    if: >-
+      vars.TF_STATE_BUCKET != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (vars.CLOUD_UP == 'true' && github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      clusters: ${{ steps.out.outputs.clusters }}
+      ecr_primary: ${{ steps.out.outputs.ecr_primary }}
+      ecr_standby: ${{ steps.out.outputs.ecr_standby }}
+      acr: ${{ steps.out.outputs.acr }}
+      app_url: ${{ steps.out.outputs.app_url }}
+      swa_url: ${{ steps.out.outputs.swa_url }}
+      bucket: ${{ steps.out.outputs.bucket }}
+      distribution: ${{ steps.out.outputs.distribution }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Read state outputs
+        id: out
+        run: |
+          aws s3 cp "$AWS_STATE" aws.json --only-show-errors
+          az storage blob download --auth-mode login --account-name "$AZ_STATE_SA" \
+            -c tfstate -n dev/azure.tfstate -f az.json -o none
+          ecr_p=$(jq -r '.outputs.ecr_repositories.value["us-east-1"]["trackflow-backend"]' aws.json)
+          ecr_s=$(jq -r '.outputs.ecr_repositories.value["us-west-2"]["trackflow-backend"]' aws.json)
+          acr=$(jq -r '.outputs.acr_login_server.value' az.json)
+
+          # One matrix entry per cluster, in Traffic Manager priority order:
+          # AWS primary, AWS standby, Azure primary, Azure standby.
+          clusters=$(jq -nc \
+            --argjson eks "$(jq -c '.outputs.eks_clusters.value' aws.json)" \
+            --argjson aks "$(jq -c '.outputs.aks_clusters.value' az.json)" \
+            --arg ecr_p "$ecr_p" --arg ecr_s "$ecr_s" --arg acr "$acr/trackflow-backend" \
+            --arg az_p "$(jq -r '.outputs.azure_primary_location.value' az.json)" \
+            --arg az_s "$(jq -r '.outputs.azure_standby_location.value' az.json)" '
+            [ ($eks["us-east-1"][] | {cloud: "aws",   region: "us-east-1", cluster: ., image: $ecr_p}),
+              ($eks["us-west-2"][] | {cloud: "aws",   region: "us-west-2", cluster: ., image: $ecr_s}),
+              ($aks[$az_p][]       | {cloud: "azure", region: $az_p,       cluster: ., image: $acr}),
+              ($aks[$az_s][]       | {cloud: "azure", region: $az_s,       cluster: ., image: $acr}) ]
+            | to_entries | map(.value + {priority: (.key + 1)})')
+          {
+            echo "clusters=$clusters"
+            echo "ecr_primary=$ecr_p"
+            echo "ecr_standby=$ecr_s"
+            echo "acr=$acr"
+            echo "app_url=$(jq -r '.outputs.app_url.value' aws.json)"
+            echo "swa_url=$(jq -r '.outputs.static_web_app_url.value' az.json)"
+            echo "bucket=$(jq -r '.outputs.frontend_bucket.value' aws.json)"
+            echo "distribution=$(jq -r '.outputs.cloudfront_distribution_id.value' aws.json)"
+          } >> "$GITHUB_OUTPUT"
+          echo "$clusters" | jq .
+          rm aws.json az.json
+
+  build:
+    name: Build and push backend image
+    needs: context
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          load: true
+          tags: trackflow-backend:${{ env.SHA }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      # ECR tags are immutable, so a re-run for the same commit skips the push.
+      - name: Push to ECR (both regions) and ACR
+        env:
+          ECR_P: ${{ needs.context.outputs.ecr_primary }}
+          ECR_S: ${{ needs.context.outputs.ecr_standby }}
+          ACR: ${{ needs.context.outputs.acr }}
+        run: |
+          for pair in "us-east-1 $ECR_P" "us-west-2 $ECR_S"; do
+            set -- $pair
+            aws ecr get-login-password --region "$1" | docker login -u AWS --password-stdin "${2%%/*}"
+            if aws ecr describe-images --region "$1" --repository-name trackflow-backend \
+                 --image-ids imageTag="$SHA" >/dev/null 2>&1; then
+              echo "$2:$SHA already pushed"
+            else
+              docker tag "trackflow-backend:$SHA" "$2:$SHA" && docker push -q "$2:$SHA"
+            fi
+          done
+          az acr login -n "${ACR%%.*}"
+          docker tag "trackflow-backend:$SHA" "$ACR/trackflow-backend:$SHA"
+          docker push -q "$ACR/trackflow-backend:$SHA"
+
+  deploy:
+    name: ${{ matrix.cloud }} ${{ matrix.cluster }}
+    needs: [context, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.context.outputs.clusters) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: AWS login
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ matrix.cloud == 'aws' && matrix.region || 'us-east-1' }}
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Connect kubectl
+        run: |
+          if [ "${{ matrix.cloud }}" = aws ]; then
+            aws eks update-kubeconfig --region "${{ matrix.region }}" --name "${{ matrix.cluster }}"
+          else
+            az aks get-credentials -g trackflow-dev -n "${{ matrix.cluster }}" --overwrite-existing
+          fi
+          kubectl get nodes
+
+      # Same controller version as kind (scripts/kind-up.sh). The AWS variant
+      # fronts it with an NLB; the generic cloud variant gets an Azure LB.
+      - name: Ingress controller
+        run: |
+          provider=$([ "${{ matrix.cloud }}" = aws ] && echo aws || echo cloud)
+          kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/$provider/deploy.yaml"
+          kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=5m
+
+      - name: Configuration and secrets
+        env:
+          APP_URL: ${{ needs.context.outputs.app_url }}
+          SWA_URL: ${{ needs.context.outputs.swa_url }}
+        run: |
+          if [ "${{ matrix.cloud }}" = aws ]; then
+            aws s3 cp "$AWS_STATE" state.json --only-show-errors
+          else
+            az storage blob download --auth-mode login --account-name "$AZ_STATE_SA" \
+              -c tfstate -n dev/azure.tfstate -f state.json -o none
+          fi
+          out() { jq -r ".outputs.$1.value" state.json; }
+          db_url=$(out db_jdbc_url); db_user=$(out db_username)
+          db_password=$(out db_password); jwt=$(out jwt_secret)
+          echo "::add-mask::$db_password"; echo "::add-mask::$jwt"
+          rm state.json
+
+          # The SPA is served from CloudFront (primary) and Static Web Apps (standby).
+          printf '%s\n' \
+            'apiVersion: v1' \
+            'kind: ConfigMap' \
+            'metadata:' \
+            '  name: backend-config' \
+            'data:' \
+            '  SPRING_PROFILES_ACTIVE: cloud,demo-data' \
+            "  DB_URL: \"$db_url\"" \
+            "  CORS_ALLOWED_ORIGINS: \"$APP_URL,$SWA_URL\"" \
+            "  APP_CLOUD: ${{ matrix.cloud }}" \
+            "  APP_REGION: ${{ matrix.region }}" \
+            > k8s/overlays/cloud/cluster-patch.yaml
+
+          kubectl apply -f k8s/overlays/cloud/namespace.yaml
+          kubectl -n trackflow create secret generic backend-secrets \
+            --from-literal=DB_USERNAME="$db_user" \
+            --from-literal=DB_PASSWORD="$db_password" \
+            --from-literal=JWT_SECRET="$jwt" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Roll out backend
+        working-directory: k8s/overlays/cloud
+        run: |
+          kustomize edit set image "trackflow-backend=${{ matrix.image }}:$SHA"
+          kubectl apply -k .
+          # Picks up a changed Secret even when the image tag is unchanged.
+          kubectl -n trackflow rollout restart deployment/backend
+          kubectl -n trackflow rollout status deployment/backend --timeout=10m
+
+      - name: Load balancer address
+        id: lb
+        run: |
+          addr=""
+          for i in $(seq 1 60); do
+            addr=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}{.status.loadBalancer.ingress[0].ip}')
+            [ -n "$addr" ] && break; sleep 10
+          done
+          [ -n "$addr" ] || { echo "No load balancer address after 10 minutes"; exit 1; }
+          echo "addr=$addr" >> "$GITHUB_OUTPUT"
+          # A new NLB name takes a minute or two to resolve.
+          for i in $(seq 1 30); do
+            curl -fsS --max-time 5 "http://$addr/actuator/health" && exit 0; sleep 10
+          done
+          echo "::warning::$addr is not answering /actuator/health yet"
+
+      - name: Save Traffic Manager endpoint
+        run: |
+          jq -n --arg name "${{ matrix.cloud }}-${{ matrix.cluster }}" \
+                --arg target "${{ steps.lb.outputs.addr }}" --argjson priority ${{ matrix.priority }} \
+                '{name: ($name | gsub("[^A-Za-z0-9-]"; "-")), target: $target, priority: $priority}' \
+                > endpoint.json
+          cat endpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: endpoint-${{ matrix.priority }}
+          path: endpoint.json
+          retention-days: 1
+
+  traffic:
+    name: Point Traffic Manager at the clusters
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ARM_USE_OIDC: 'true'
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_traffic_manager_dns_name: ${{ vars.TM_DNS_NAME }}
+    defaults:
+      run:
+        working-directory: infra/envs/dev/azure
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.x
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: endpoint-*
+          path: ${{ github.workspace }}/endpoints
+
+      - name: Apply endpoints
+        run: |
+          jq -s '{traffic_manager_endpoints: sort_by(.priority)}' \
+            "$GITHUB_WORKSPACE"/endpoints/*/endpoint.json > endpoints.auto.tfvars.json
+          cat endpoints.auto.tfvars.json
+          tofu init -input=false \
+            -backend-config="resource_group_name=${{ vars.AZ_STATE_RG }}" \
+            -backend-config="storage_account_name=${{ vars.AZ_STATE_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=dev/azure.tfstate" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+          # Only Traffic Manager changes; the clusters and database are untouched.
+          tofu apply -input=false -auto-approve -target=module.traffic_manager
+
+  frontend:
+    name: Publish the SPA
+    needs: [context, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # CloudFront serves /api itself (same origin). The Static Web Apps copy
+      # calls the API through CloudFront over HTTPS (an http API would be
+      # blocked as mixed content).
+      - name: Build
+        working-directory: frontend
+        env:
+          APP_URL: ${{ needs.context.outputs.app_url }}
+        run: |
+          npm ci --no-audit --no-fund
+          VITE_API_BASE_URL= npm run build && mv dist dist-cloudfront
+          VITE_API_BASE_URL="$APP_URL" npm run build && mv dist dist-swa
+
+      - name: Upload to S3 and invalidate CloudFront
+        env:
+          BUCKET: ${{ needs.context.outputs.bucket }}
+          DISTRIBUTION: ${{ needs.context.outputs.distribution }}
+        run: |
+          aws s3 sync frontend/dist-cloudfront "s3://$BUCKET" --delete --only-show-errors \
+            --cache-control "public,max-age=31536000,immutable" --exclude index.html
+          aws s3 cp frontend/dist-cloudfront/index.html "s3://$BUCKET/index.html" \
+            --cache-control "no-cache" --only-show-errors
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths '/index.html' >/dev/null
+
+      - name: Static Web Apps token
+        id: swa
+        run: |
+          az storage blob download --auth-mode login --account-name "$AZ_STATE_SA" \
+            -c tfstate -n dev/azure.tfstate -f state.json -o none
+          token=$(jq -r '.outputs.static_web_app_token.value' state.json); rm state.json
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
+          action: upload
+          app_location: frontend/dist-swa
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Summary
+        run: |
+          {
+            echo "### Deployed ${SHA:0:7}"
+            echo "- App (CloudFront): ${{ needs.context.outputs.app_url }}"
+            echo "- App (Static Web Apps): ${{ needs.context.outputs.swa_url }}"
+            echo "- API health: http://${{ vars.TM_DNS_NAME }}.trafficmanager.net/actuator/health"
+          } >> "$GITHUB_STEP_SUMMARY"

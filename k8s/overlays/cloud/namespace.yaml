@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trackflow
+  labels:
+    # Reject privileged pods in this namespace.
+    pod-security.kubernetes.io/enforce: restricted

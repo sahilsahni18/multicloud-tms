@@ -40,3 +40,17 @@ output "static_web_app_token" {
 output "api_fqdn" {
   value = module.traffic_manager.fqdn
 }
+
+output "jwt_secret" {
+  description = "Base64, 64 bytes; goes into the backend-secrets Secret."
+  value       = random_bytes.jwt_secret.base64
+  sensitive   = true
+}
+
+output "azure_primary_location" {
+  value = var.primary_location
+}
+
+output "azure_standby_location" {
+  value = var.standby_location
+}

@@ -211,3 +211,12 @@ module "dns" {
   cloudfront_hosted_zone_id = module.frontend.hosted_zone_id
   api_target_fqdn           = local.api_fqdn
 }
+
+# ------------------------------------------------------------------ secrets --
+
+# JWT signing key shared by this cloud's clusters (they share one database, so
+# a token issued in one region stays valid after failover to the other).
+# Generated here so no person or workflow ever handles it; CD reads it from state.
+resource "random_bytes" "jwt_secret" {
+  length = 64
+}

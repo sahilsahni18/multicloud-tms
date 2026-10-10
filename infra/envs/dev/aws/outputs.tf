@@ -43,3 +43,9 @@ output "app_url" {
 output "api_fqdn" {
   value = local.api_fqdn
 }
+
+output "jwt_secret" {
+  description = "Base64, 64 bytes; goes into the backend-secrets Secret."
+  value       = random_bytes.jwt_secret.base64
+  sensitive   = true
+}

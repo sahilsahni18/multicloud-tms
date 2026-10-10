@@ -1,0 +1,157 @@
+name: Cloud infrastructure
+
+# Creates or destroys the dev environment on AWS and Azure with OpenTofu.
+# apply runs in the "cloud" GitHub environment: add yourself as a required
+# reviewer there and nothing that costs money starts without your approval.
+# plan and destroy run in "cloud-teardown" (no reviewers), so the nightly
+# safety-net destroy never waits for a click.
+#
+# Zero-cost rule: every apply is followed by a destroy the same day. The
+# nightly schedule destroys anything still running as a safety net.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: plan / apply / destroy
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      stack:
+        description: Which cloud
+        type: choice
+        options: [both, aws, azure]
+        default: both
+  schedule:
+    - cron: '30 20 * * *' # 02:00 IST: safety-net destroy
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC -> AWS role / Azure app, no stored keys
+
+concurrency:
+  group: cloud-dev # never run two applies/destroys at once
+  cancel-in-progress: false
+
+env:
+  ACTION: ${{ github.event_name == 'schedule' && 'destroy' || inputs.action }}
+  TF_VAR_traffic_manager_dns_name: ${{ vars.TM_DNS_NAME }}
+  # Lets your own tms-admin user run kubectl against the EKS clusters.
+  TF_VAR_admin_role_arns: ${{ vars.AWS_ADMIN_USER_ARN && format('["{0}"]', vars.AWS_ADMIN_USER_ARN) || '[]' }}
+  ARM_USE_OIDC: 'true'
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  stacks:
+    name: Select stacks
+    # Nothing to do until infra/bootstrap has been applied and its outputs saved
+    # as repository variables.
+    if: vars.TF_STATE_BUCKET != ''
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.pick.outputs.list }}
+    steps:
+      - id: pick
+        run: |
+          stack="${{ github.event_name == 'schedule' && 'both' || inputs.stack }}"
+          if [ "$stack" = both ]; then echo 'list=["aws","azure"]' >> "$GITHUB_OUTPUT"
+          else echo "list=[\"$stack\"]" >> "$GITHUB_OUTPUT"; fi
+
+  tofu:
+    name: ${{ matrix.stack }} ${{ github.event_name == 'schedule' && 'destroy' || inputs.action }}
+    needs: stacks
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ (github.event_name != 'schedule' && inputs.action == 'apply') && 'cloud' || 'cloud-teardown' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: ${{ fromJSON(needs.stacks.outputs.list) }}
+    defaults:
+      run:
+        working-directory: infra/envs/dev/${{ matrix.stack }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.x
+
+      - name: AWS login (OIDC)
+        if: matrix.stack == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Azure login (OIDC)
+        if: matrix.stack == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Init
+        run: |
+          if [ "${{ matrix.stack }}" = aws ]; then
+            tofu init -input=false \
+              -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+              -backend-config="key=dev/aws.tfstate" \
+              -backend-config="region=us-east-1" \
+              -backend-config="encrypt=true" \
+              -backend-config="use_lockfile=true"
+          else
+            tofu init -input=false \
+              -backend-config="resource_group_name=${{ vars.AZ_STATE_RG }}" \
+              -backend-config="storage_account_name=${{ vars.AZ_STATE_SA }}" \
+              -backend-config="container_name=tfstate" \
+              -backend-config="key=dev/azure.tfstate" \
+              -backend-config="use_azuread_auth=true" \
+              -backend-config="use_oidc=true"
+          fi
+
+      # Load balancers created by Kubernetes (the ingress Service) are not in
+      # OpenTofu's state: delete them first, or they keep billing and block
+      # the VPC / resource group from being deleted.
+      - name: Remove Kubernetes load balancers
+        if: env.ACTION == 'destroy'
+        continue-on-error: true
+        run: |
+          if [ "${{ matrix.stack }}" = aws ]; then
+            for region in us-east-1 us-west-2; do
+              for c in $(aws eks list-clusters --region "$region" --query 'clusters[?starts_with(@, `trackflow-dev`)]' --output text); do
+                aws eks update-kubeconfig --region "$region" --name "$c" >/dev/null
+                kubectl delete namespace ingress-nginx --ignore-not-found --wait=true --timeout=5m
+              done
+            done
+          else
+            for c in $(az aks list -g trackflow-dev --query '[].name' -o tsv 2>/dev/null); do
+              az aks get-credentials -g trackflow-dev -n "$c" --overwrite-existing >/dev/null
+              kubectl delete namespace ingress-nginx --ignore-not-found --wait=true --timeout=5m
+            done
+          fi
+
+      - name: Plan
+        if: env.ACTION == 'plan'
+        run: tofu plan -input=false
+
+      - name: Apply
+        if: env.ACTION == 'apply'
+        run: tofu apply -input=false -auto-approve
+
+      - name: Destroy
+        if: env.ACTION == 'destroy'
+        run: tofu destroy -input=false -auto-approve
+
+      - name: Summary
+        if: env.ACTION == 'apply'
+        run: |
+          {
+            echo "### ${{ matrix.stack }} is up — remember to destroy after the session"
+            echo '```'
+            tofu output
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
