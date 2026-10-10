@@ -47,8 +47,11 @@ jobs:
   stacks:
     name: Select stacks
     # Nothing to do until infra/bootstrap has been applied and its outputs saved
-    # as repository variables.
-    if: vars.TF_STATE_BUCKET != ''
+    # as repository variables. Set the KEEP_UP variable to 'true' to pause the
+    # nightly destroy while reviewers need the environment (remove it after).
+    if: >-
+      vars.TF_STATE_BUCKET != '' &&
+      !(github.event_name == 'schedule' && vars.KEEP_UP == 'true')
     runs-on: ubuntu-latest
     outputs:
       list: ${{ steps.pick.outputs.list }}

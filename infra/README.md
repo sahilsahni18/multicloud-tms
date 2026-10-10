@@ -82,6 +82,6 @@ Everything runs from GitHub Actions with OIDC; nothing costly starts without you
 | 3 | Demo: app at the CloudFront URL; failover = `kubectl -n trackflow scale deploy/backend --replicas=0` on us-east-1 | — |
 | 4 | **Tear down the same day** | *Cloud infrastructure* → `destroy`, `both` |
 
-The destroy job deletes the ingress load balancers (created by Kubernetes, not OpenTofu) before `tofu destroy`. A scheduled run at 02:00 IST destroys anything still up. Set the `CLOUD_UP` variable to `true` during a session if every green Backend CI on `main` should redeploy automatically.
+The destroy job deletes the ingress load balancers (created by Kubernetes, not OpenTofu) before `tofu destroy`. A scheduled run at 02:00 IST destroys anything still up; set the `KEEP_UP` variable to `true` to pause it while reviewers need the live environment, and delete it afterwards. Set the `CLOUD_UP` variable to `true` during a session if every green Backend CI on `main` should redeploy automatically.
 
 **Known limitation:** the Static Web Apps copy calls the API cross-site, so the `SameSite=Strict` refresh cookie is not sent there: sessions on that copy last one access-token lifetime (15 min). The CloudFront copy is unaffected.
