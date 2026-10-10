@@ -2,4 +2,4 @@
 github_repository     = "your-user/multicloud-tms"
 azure_subscription_id = "00000000-0000-0000-0000-000000000000"
 # aws_region          = "us-east-1"
-# azure_location      = "eastus"
+# azure_location      = "eastasia"

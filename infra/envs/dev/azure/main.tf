@@ -2,8 +2,8 @@
 # the standby SPA on Static Web Apps, and Traffic Manager, the failover switch
 # for the API across all four clusters (AWS and Azure).
 #
-#   eastus (primary)                 westeurope (standby)
-#   AKS + ACR + MySQL Flexible       AKS  (backend uses the eastus MySQL,
+#   eastasia (primary)               koreacentral (standby)
+#   AKS + ACR + MySQL Flexible       AKS  (backend uses the eastasia MySQL,
 #                                          admitted by its egress IP)
 #   Traffic Manager: 1 AWS primary, 2 AWS standby, 3 Azure primary, 4 Azure standby
 

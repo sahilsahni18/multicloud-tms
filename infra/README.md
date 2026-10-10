@@ -8,8 +8,13 @@ infra/
 │   └── azure/            aks, acr, mysql, static-web-app, traffic-manager
 └── envs/dev/
     ├── aws/              us-east-1 + us-west-2 (peered VPCs, EKS x2, one RDS, CloudFront)
-    └── azure/            eastus + westeurope (AKS x2, one MySQL, Static Web Apps, Traffic Manager)
+    └── azure/            eastasia + koreacentral (AKS x2, one MySQL, Static Web Apps, Traffic Manager)
 ```
+
+Azure regions are East Asia + Korea Central, not the spec's East US + West Europe:
+the Azure for Students subscription only allows uaenorth, eastasia,
+indiasouthcentral, koreacentral and malaysiawest. East Asia is the only one of
+those with Static Web Apps. AWS keeps us-east-1 + us-west-2.
 
 ## How the pieces fit
 
@@ -17,7 +22,7 @@ infra/
 |---|---|---|
 | Clusters | EKS in both regions, 1 x t3.medium node each | AKS (Free tier) in both regions, 1 x B2als v2 node each |
 | Images | ECR in both regions (CI pushes to both) | One ACR, both clusters pull from it |
-| Database | One RDS (db.t4g.micro) in us-east-1; us-west-2 reaches it over VPC peering | One MySQL Flexible (B1ms) in eastus; westeurope admitted by its static egress IP |
+| Database | One RDS (db.t4g.micro) in us-east-1; us-west-2 reaches it over VPC peering | One MySQL Flexible (B1ms) in eastasia; koreacentral admitted by its static egress IP |
 | Frontend | S3 + CloudFront; `/api/*` forwarded to Traffic Manager (one origin, no CORS) | Static Web Apps (standby copy) |
 | Failover | — | Traffic Manager, priority 1–4 across all four clusters, probing `/actuator/health` |
 | DNS | Route 53 records only if you own a domain (`domain_name`) | `<name>.trafficmanager.net` |

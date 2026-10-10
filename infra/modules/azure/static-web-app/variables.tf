@@ -5,7 +5,7 @@ variable "name" {
 variable "location" {
   description = "Static Web Apps runs only in a few regions: westus2, centralus, eastus2, westeurope, eastasia."
   type        = string
-  default     = "westeurope"
+  default     = "eastasia"
 }
 
 variable "resource_group_name" {

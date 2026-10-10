@@ -9,20 +9,23 @@ variable "subscription_id" {
   default     = null
 }
 
+# Azure for Students limits regions by policy (here: uaenorth, eastasia,
+# indiasouthcentral, koreacentral, malaysiawest). East Asia is the only one of
+# those with Static Web Apps; Korea Central is the nearest second region.
 variable "primary_location" {
   description = "Must be allowed by your subscription's region policy."
   type        = string
-  default     = "eastus"
+  default     = "eastasia"
 }
 
 variable "standby_location" {
   type    = string
-  default = "westeurope"
+  default = "koreacentral"
 }
 
 variable "static_web_app_location" {
   type    = string
-  default = "westeurope"
+  default = "eastasia"
 }
 
 variable "cluster_count" {

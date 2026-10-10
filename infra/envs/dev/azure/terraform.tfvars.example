@@ -1,12 +1,12 @@
 # Copy to terraform.tfvars (gitignored).
 traffic_manager_dns_name = "trackflow-dev-yourname" # must match the AWS stack
-# primary_location       = "eastus"                 # use regions your subscription allows
-# standby_location       = "westeurope"
+# primary_location       = "eastasia"               # use regions your subscription allows
+# standby_location       = "koreacentral"
 
 # Added in Step 8, once the ingress load balancers exist:
 # traffic_manager_endpoints = [
 #   { name = "aws-us-east-1",    target = "a1b2...elb.amazonaws.com", priority = 1 },
 #   { name = "aws-us-west-2",    target = "c3d4...elb.amazonaws.com", priority = 2 },
-#   { name = "azure-eastus",     target = "20.1.2.3",                 priority = 3 },
-#   { name = "azure-westeurope", target = "20.4.5.6",                 priority = 4 },
+#   { name = "azure-eastasia",     target = "20.1.2.3",              priority = 3 },
+#   { name = "azure-koreacentral", target = "20.4.5.6",              priority = 4 },
 # ]

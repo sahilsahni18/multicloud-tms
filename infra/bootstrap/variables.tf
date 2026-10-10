@@ -20,7 +20,7 @@ variable "azure_subscription_id" {
 }
 
 variable "azure_location" {
-  description = "Region for the state storage account."
+  description = "Region for the state storage account (must be allowed by your subscription)."
   type        = string
-  default     = "eastus"
+  default     = "eastasia"
 }
