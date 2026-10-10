@@ -84,4 +84,8 @@ Everything runs from GitHub Actions with OIDC; nothing costly starts without you
 
 The destroy job deletes the ingress load balancers (created by Kubernetes, not OpenTofu) before `tofu destroy`. A scheduled run at 02:00 IST destroys anything still up; set the `KEEP_UP` variable to `true` to pause it while reviewers need the live environment, and delete it afterwards. Set the `CLOUD_UP` variable to `true` during a session if every green Backend CI on `main` should redeploy automatically.
 
+**Verified on 2026-10-10** (first session): all four clusters healthy behind `trackflow-dev-sahil.trafficmanager.net`; scaling the us-east-1 backend to 0 moved traffic to us-west-2 in 38 s, and stopping both AWS backends moved it to Azure East Asia in 45 s (login works there against Azure's own database).
+
+**New-account limits met on that run:** the AWS Free plan only launches Free-plan-eligible instance types (hence c7i-flex.large), and new AWS accounts cannot create load balancers or CloudFront until AWS Support enables them (hence the node-IP ingress on AWS and `enable_cloudfront = false`).
+
 **Known limitation:** the Static Web Apps copy calls the API cross-site, so the `SameSite=Strict` refresh cookie is not sent there: sessions on that copy last one access-token lifetime (15 min). The CloudFront copy is unaffected.

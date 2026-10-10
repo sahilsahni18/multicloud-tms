@@ -15,7 +15,7 @@ Everything is built and proven locally first; the cloud is touched only on Day 3
 | 2 | 5 | Pages: dashboard, projects, tickets, ticket detail, users/roles, profile, reports, settings, Deployment Portal + history | Full ticket lifecycle from the UI | ✅ |
 | 2 | 6 | Dockerfiles + full Compose stack, Kustomize manifests on kind, GitHub Actions CI | `docker compose up` works; app runs on kind; CI green | ✅ |
 | 3 | 7 | OpenTofu modules: AWS (VPC, EKS, ECR, RDS, Route 53, S3 + CloudFront), Azure (RG, AKS, ACR, MySQL Flexible, Traffic Manager, Static Web Apps) | `tofu plan` clean for both clouds | ✅ |
-| 3 | 8 | Apply both clouds, CD to 4 clusters, Traffic Manager failover | Killing a region fails over in < 2 min | ⬜ |
+| 3 | 8 | Apply both clouds, CD to 4 clusters, Traffic Manager failover | Killing a region fails over in < 2 min | ✅ failover 38 s (AWS→AWS), 45 s (AWS→Azure) |
 | 3 | 9 | Portal wired to the GitHub Actions provisioning workflow; demo rehearsal; `tofu destroy` | Portal deploy lands as COMPLETED in history | ⬜ |
 
 ## Repository layout
