@@ -8,7 +8,7 @@ name: Provision environment
 #              for that environment and region. Read-only, nothing is created.
 #   apply   -> a new environment on the region's existing cluster: its own
 #              namespace, its own database on the cloud's MySQL server, backend
-#              + SPA, and its own hostname (tms-<env>-<id>.<ip>.nip.io).
+#              + SPA, and its own hostname (<env><id>-tms.<ip>.nip.io).
 #   destroy -> drops that database and deletes the namespace.
 #
 # Needs the "Cloud infrastructure" stack to be up (apply) and the repository
@@ -192,7 +192,8 @@ jobs:
               -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
           fi
           [ -n "$addr" ] || { echo "::error::No ingress address on $CLUSTER. Run Deploy to cloud first."; exit 1; }
-          host="$NS.$addr.nip.io"
+          # The first label must not end in a digit: nip.io would read it as part of the IP.
+          host="$ENVIRONMENT$DEPLOYMENT_ID-tms.$addr.nip.io"
           echo "HOST=$host" >> "$GITHUB_ENV"
           kubectl create namespace "$NS" --dry-run=client -o yaml \
             | kubectl label --local -f - -o yaml \

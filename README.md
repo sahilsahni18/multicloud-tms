@@ -134,7 +134,7 @@ Admin → **Deployments** → **New deployment**. In the cloud the portal runs o
 
 | Action | What really happens | Time | Cost |
 |---|---|---|---|
-| **APPLY** (DEV) | A new environment on the region's existing EKS/AKS cluster: its own namespace, its own database on RDS / MySQL Flexible (Flyway migrates it), backend + SPA, and its own URL `http://tms-dev-<id>.<ip>.nip.io` | 3–5 min | none extra |
+| **APPLY** (DEV) | A new environment on the region's existing EKS/AKS cluster: its own namespace, its own database on RDS / MySQL Flexible (Flyway migrates it), backend + SPA, and its own URL `http://dev<id>-tms.<ip>.nip.io` | 3–5 min | none extra |
 | **PLAN** (QA, PROD) | `tofu plan` of the full stack (network, clusters, database, registry) for that environment and region, from an empty state. Nothing is created | 2–3 min | free |
 | **Destroy** | Drops the environment's database and deletes its namespace | 1 min | |
 
