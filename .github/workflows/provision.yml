@@ -1,0 +1,296 @@
+name: Provision environment
+
+# Started by the backend's Deployment Portal (GitHubActionsProvisioningRunner)
+# with workflow_dispatch; every step is reported back to the portal with an
+# HMAC-signed callback (scripts/report-deployment.sh).
+#
+#   plan    -> tofu plan of the full stack (VPC/VNet, clusters, database, ...)
+#              for that environment and region. Read-only, nothing is created.
+#   apply   -> a new environment on the region's existing cluster: its own
+#              namespace, its own database on the cloud's MySQL server, backend
+#              + SPA, and its own hostname (tms-<env>-<id>.<ip>.nip.io).
+#   destroy -> drops that database and deletes the namespace.
+#
+# Needs the "Cloud infrastructure" stack to be up (apply) and the repository
+# secret DEPLOY_CALLBACK_SECRET (same value the backend has).
+
+run-name: 'Portal #${{ inputs.deployment_id }}: ${{ inputs.action }} ${{ inputs.cloud }} ${{ inputs.region }} ${{ inputs.environment }}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_id:
+        description: Deployment id in the portal
+        required: true
+        type: string
+      action:
+        type: choice
+        options: [plan, apply, destroy]
+      cloud:
+        type: choice
+        options: [aws, azure]
+      region:
+        required: true
+        type: string
+      environment:
+        type: choice
+        options: [dev, qa, prod]
+      cluster_count:
+        type: string
+        default: '1'
+      callback_url:
+        description: Public base URL of the backend that receives step reports
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: provision-${{ inputs.deployment_id }}
+  cancel-in-progress: false
+
+env:
+  # Inputs reach the shell only through env vars (never ${{ }} inside run:).
+  DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+  ACTION: ${{ inputs.action }}
+  CLOUD: ${{ inputs.cloud }}
+  REGION: ${{ inputs.region }}
+  ENVIRONMENT: ${{ inputs.environment }}
+  CLUSTER_COUNT: ${{ inputs.cluster_count }}
+  CALLBACK_URL: ${{ inputs.callback_url }}
+  CALLBACK_SECRET: ${{ secrets.DEPLOY_CALLBACK_SECRET }}
+  RUN_ID: ${{ github.run_id }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  AWS_STATE: s3://${{ vars.TF_STATE_BUCKET }}/dev/aws.tfstate
+  AZ_STATE_SA: ${{ vars.AZ_STATE_SA }}
+  ARM_USE_OIDC: 'true'
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  provision:
+    name: ${{ inputs.action }} ${{ inputs.cloud }} ${{ inputs.region }} ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash # -eo pipefail
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check inputs
+        run: |
+          [[ "$DEPLOYMENT_ID" =~ ^[0-9]{1,10}$ ]] || { echo "bad deployment_id"; exit 1; }
+          [[ "$REGION" =~ ^[a-z0-9-]{3,32}$ ]] || { echo "bad region"; exit 1; }
+          [[ "$CLUSTER_COUNT" =~ ^[1-5]$ ]] || { echo "bad cluster_count"; exit 1; }
+          [[ "$CALLBACK_URL" =~ ^https?://[A-Za-z0-9.:-]+/?$ ]] || { echo "bad callback_url"; exit 1; }
+          [ -n "$CALLBACK_SECRET" ] || { echo "DEPLOY_CALLBACK_SECRET is not set"; exit 1; }
+          {
+            echo "NS=tms-$ENVIRONMENT-$DEPLOYMENT_ID"
+            echo "DB_NAME=trackflow_${ENVIRONMENT}_$DEPLOYMENT_ID"
+            echo "REPORT=$GITHUB_WORKSPACE/scripts/report-deployment.sh"
+          } >> "$GITHUB_ENV"
+          echo "STEP=start" >> "$GITHUB_ENV"
+
+      - name: AWS login
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.cloud == 'aws' && inputs.region || 'us-east-1' }}
+      - name: Azure login
+        if: inputs.cloud == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # ---------------------------------------------------------------- plan
+      - uses: opentofu/setup-opentofu@v1
+        if: inputs.action == 'plan'
+        with:
+          tofu_version: 1.10.x
+          tofu_wrapper: false
+
+      - name: tofu plan
+        if: inputs.action == 'plan'
+        working-directory: infra/envs/dev/${{ inputs.cloud }}
+        run: |
+          echo "STEP=plan" >> "$GITHUB_ENV"
+          # Plan the stack for a brand-new environment: local, empty state, so
+          # the shared dev state is never read or locked.
+          printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
+          tofu init -input=false -no-color
+          if [ "$CLOUD" = aws ]; then
+            standby=$([ "$REGION" = us-west-2 ] && echo us-east-1 || echo us-west-2)
+            vars=(-var "primary_region=$REGION" -var "standby_region=$standby")
+          else
+            standby=$([ "$REGION" = koreacentral ] && echo eastasia || echo koreacentral)
+            vars=(-var "primary_location=$REGION" -var "standby_location=$standby")
+          fi
+          tofu plan -input=false -no-color -lock=false -out=plan.bin \
+            -var "environment=$ENVIRONMENT" -var "cluster_count=$CLUSTER_COUNT" \
+            -var "traffic_manager_dns_name=trackflow-$ENVIRONMENT-plan-$DEPLOYMENT_ID" \
+            "${vars[@]}" | tee plan.txt
+          summary=$(grep -E '^Plan: ' plan.txt | tail -1)
+          created=$(tofu show -json plan.bin | jq -r '
+            [.resource_changes[] | select(.change.actions | index("create")) | .type]
+            | group_by(.) | map({t: .[0], n: length})
+            | map(select(.t | test("eks_cluster$|eks_node_group$|kubernetes_cluster$|db_instance$|mysql_flexible_server$|_vpc$|virtual_network$|ecr_repository$|container_registry$|traffic_manager_profile$")))
+            | map("\(.n) × \(.t)") | join(", ")')
+          "$REPORT" PLANNED "$summary (${ENVIRONMENT}, $REGION + standby $standby, $CLUSTER_COUNT cluster(s) per region). Includes: $created"
+
+      # --------------------------------------------------------------- apply
+      - name: Connect to the region's cluster
+        if: inputs.action != 'plan'
+        run: |
+          echo "STEP=cluster" >> "$GITHUB_ENV"
+          if [ "$CLOUD" = aws ]; then
+            aws s3 cp "$AWS_STATE" state.json --only-show-errors
+            cluster=$(jq -r --arg r "$REGION" '.outputs.eks_clusters.value[$r][0] // empty' state.json)
+          else
+            az storage blob download --auth-mode login --account-name "$AZ_STATE_SA" \
+              -c tfstate -n dev/azure.tfstate -f state.json -o none
+            cluster=$(jq -r --arg r "$REGION" '.outputs.aks_clusters.value[$r][0] // empty' state.json)
+          fi
+          [ -n "$cluster" ] || { echo "::error::No $CLOUD cluster in $REGION. Is the cloud stack up?"; exit 1; }
+          if [ "$CLOUD" = aws ]; then
+            aws eks update-kubeconfig --region "$REGION" --name "$cluster" >/dev/null
+          else
+            az aks get-credentials -g trackflow-dev -n "$cluster" --overwrite-existing >/dev/null
+          fi
+          kubectl get nodes
+          jdbc=$(jq -r '.outputs.db_jdbc_url.value' state.json)
+          db_host=$(echo "$jdbc" | sed -E 's#^jdbc:mysql://([^:/]+).*#\1#')
+          db_user=$(jq -r '.outputs.db_username.value' state.json)
+          db_password=$(jq -r '.outputs.db_password.value' state.json)
+          jwt=$(jq -r '.outputs.jwt_secret.value' state.json)
+          echo "::add-mask::$db_password"; echo "::add-mask::$jwt"
+          rm state.json
+          {
+            echo "CLUSTER=$cluster"
+            echo "DB_HOST=$db_host"
+            echo "DB_USER=$db_user"
+            echo "DB_PASSWORD=$db_password"
+            echo "JWT=$jwt"
+          } >> "$GITHUB_ENV"
+
+      - name: Network (namespace and hostname)
+        if: inputs.action == 'apply'
+        run: |
+          echo "STEP=network" >> "$GITHUB_ENV"
+          # The ingress controller's public address (same as deploy.yml).
+          if [ "$CLOUD" = aws ]; then
+            node=$(kubectl -n ingress-nginx get pod -l app.kubernetes.io/component=controller \
+              -o jsonpath='{.items[0].spec.nodeName}')
+            addr=$(kubectl get node "$node" -o jsonpath='{.status.addresses[?(@.type=="ExternalIP")].address}')
+          else
+            addr=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          fi
+          [ -n "$addr" ] || { echo "::error::No ingress address on $CLUSTER. Run Deploy to cloud first."; exit 1; }
+          host="$NS.$addr.nip.io"
+          echo "HOST=$host" >> "$GITHUB_ENV"
+          kubectl create namespace "$NS" --dry-run=client -o yaml \
+            | kubectl label --local -f - -o yaml \
+                app.kubernetes.io/managed-by=trackflow-portal \
+                pod-security.kubernetes.io/enforce=restricted \
+            | kubectl apply -f -
+          "$REPORT" NETWORK_CREATED "Namespace $NS (restricted pod security) with hostname $host"
+          nodes=$(kubectl get nodes --no-headers | grep -c ' Ready')
+          kind=$([ "$CLOUD" = aws ] && echo EKS || echo AKS)
+          "$REPORT" CLUSTER_CREATED "Scheduled on $kind cluster $CLUSTER in $REGION ($nodes node(s) Ready, $(kubectl version -o json | jq -r .serverVersion.gitVersion))"
+
+      - name: Database
+        if: inputs.action == 'apply'
+        run: |
+          echo "STEP=database" >> "$GITHUB_ENV"
+          kubectl -n "$NS" create secret generic backend-secrets \
+            --from-literal=DB_USERNAME="$DB_USER" \
+            --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+            --from-literal=JWT_SECRET="$JWT" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          sql="CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
+          scripts/portal-sql.sh "$NS" "$sql"
+          server=$([ "$CLOUD" = aws ] && echo "RDS MySQL" || echo "Azure Database for MySQL")
+          "$REPORT" DATABASE_CREATED "Database $DB_NAME on $server ${DB_HOST%%.*} (schema applied by Flyway on first start)"
+
+      - name: Backend
+        if: inputs.action == 'apply'
+        working-directory: k8s/overlays/portal
+        run: |
+          echo "STEP=backend" >> "$GITHUB_ENV"
+          # Same images the cluster's main app runs.
+          backend_image=$(kubectl -n trackflow get deployment backend -o jsonpath='{.spec.template.spec.containers[0].image}')
+          frontend_image=$(kubectl -n trackflow get deployment frontend -o jsonpath='{.spec.template.spec.containers[0].image}')
+          [ -n "$backend_image" ] && [ -n "$frontend_image" ] \
+            || { echo "::error::The main app is not deployed on $CLUSTER"; exit 1; }
+          kustomize edit set namespace "$NS"
+          kustomize edit set image "trackflow-backend=$backend_image" "trackflow-frontend=$frontend_image"
+          sed -i "s/portal\.example\.invalid/$HOST/; s/tms-portal-placeholder/$NS/" kustomization.yaml namespace.yaml
+          printf '%s\n' \
+            'apiVersion: v1' \
+            'kind: ConfigMap' \
+            'metadata:' \
+            '  name: backend-config' \
+            'data:' \
+            '  SPRING_PROFILES_ACTIVE: cloud,demo-data' \
+            "  DB_URL: \"jdbc:mysql://$DB_HOST:3306/$DB_NAME?sslMode=REQUIRED\"" \
+            "  CORS_ALLOWED_ORIGINS: \"http://$HOST\"" \
+            "  APP_CLOUD: $CLOUD" \
+            "  APP_REGION: $REGION" \
+            '  REFRESH_COOKIE_SECURE: "false"' \
+            '  DB_POOL_SIZE: "5"' \
+            > env-patch.yaml
+          kubectl kustomize . > rendered.yaml
+          grep -q "namespace: $NS" rendered.yaml
+          kubectl apply -f rendered.yaml
+          kubectl -n "$NS" rollout status deployment/backend --timeout=8m
+          "$REPORT" BACKEND_DEPLOYED "trackflow-backend ${backend_image##*:} rolled out in $NS: 1/1 ready, Flyway migrated $DB_NAME"
+
+      - name: Frontend
+        if: inputs.action == 'apply'
+        run: |
+          echo "STEP=frontend" >> "$GITHUB_ENV"
+          kubectl -n "$NS" rollout status deployment/frontend --timeout=5m
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 5 "http://$HOST/actuator/health" | grep -q UP \
+               && curl -fsS --max-time 5 -o /dev/null "http://$HOST/"; then
+              "$REPORT" FRONTEND_DEPLOYED "Web app served at http://$HOST (API health UP)"
+              "$REPORT" COMPLETED "Environment ready: http://$HOST (demo logins, e.g. admin@trackflow.dev)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::http://$HOST did not answer within 5 minutes"; exit 1
+
+      # ------------------------------------------------------------- destroy
+      - name: Destroy
+        if: inputs.action == 'destroy'
+        run: |
+          echo "STEP=destroy" >> "$GITHUB_ENV"
+          if kubectl get namespace "$NS" >/dev/null 2>&1; then
+            scripts/portal-sql.sh "$NS" "DROP DATABASE IF EXISTS \`$DB_NAME\`"
+            kubectl delete namespace "$NS" --wait=true --timeout=5m
+            "$REPORT" DESTROYED "Dropped database $DB_NAME and deleted namespace $NS from $CLUSTER"
+          else
+            "$REPORT" DESTROYED "Namespace $NS no longer exists on $CLUSTER; nothing left to delete"
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Portal deployment #$DEPLOYMENT_ID: $ACTION $CLOUD $REGION $ENVIRONMENT"
+            [ -n "${HOST:-}" ] && [ "$ACTION" = apply ] && echo "- URL: http://$HOST"
+            echo "- Portal: ${CALLBACK_URL%/}/admin/deployments/$DEPLOYMENT_ID"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          [ -n "${CALLBACK_SECRET:-}" ] && [ -n "${REPORT:-}" ] || exit 0
+          "$REPORT" FAILED "Failed at step '${STEP:-start}'. See the pipeline run for the log: $RUN_URL" || true

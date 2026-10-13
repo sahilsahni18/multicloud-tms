@@ -94,16 +94,16 @@ class DeploymentIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void qaAndProdArePlanOnlyAndProdNeedsConfirmation() throws Exception {
-        postAs(ADMIN, Map.of("cloudProvider", "AZURE", "region", "eastus", "clusterCount", 2, "environment", "QA"),
+        postAs(ADMIN, Map.of("cloudProvider", "AZURE", "region", "eastasia", "clusterCount", 2, "environment", "QA"),
                 "/api/v1/deployments")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail", org.hamcrest.Matchers.containsString("Use action PLAN")));
-        postAs(ADMIN, Map.of("cloudProvider", "AZURE", "region", "eastus", "clusterCount", 1, "environment", "PROD",
+        postAs(ADMIN, Map.of("cloudProvider", "AZURE", "region", "eastasia", "clusterCount", 1, "environment", "PROD",
                 "action", "PLAN"), "/api/v1/deployments")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail", org.hamcrest.Matchers.containsString("Type PROD")));
 
-        JsonNode plan = deploy(Map.of("cloudProvider", "AZURE", "region", "westeurope", "clusterCount", 2,
+        JsonNode plan = deploy(Map.of("cloudProvider", "AZURE", "region", "koreacentral", "clusterCount", 2,
                 "environment", "PROD", "action", "PLAN", "confirmEnvironment", "PROD"));
         long id = plan.get("deployment").get("id").asLong();
         JsonNode planned = awaitStatus(id, "PLANNED");
@@ -129,13 +129,13 @@ class DeploymentIntegrationTest extends AbstractIntegrationTest {
 
         JsonNode options = body(getAs(ADMIN, "/api/v1/deployments/options"));
         assertThat(options.get("regions").get("AWS").toString()).contains("us-east-1", "us-west-2");
-        assertThat(options.get("regions").get("AZURE").toString()).contains("eastus", "westeurope");
+        assertThat(options.get("regions").get("AZURE").toString()).contains("eastasia", "koreacentral");
         assertThat(options.get("maxClusters").asInt()).isEqualTo(5);
     }
 
     @Test
     void liveStatusStreamIsServerSentEvents() throws Exception {
-        JsonNode accepted = deploy(Map.of("cloudProvider", "AZURE", "region", "eastus", "clusterCount", 1,
+        JsonNode accepted = deploy(Map.of("cloudProvider", "AZURE", "region", "eastasia", "clusterCount", 1,
                 "environment", "DEV"));
         long id = accepted.get("deployment").get("id").asLong();
         mvc.perform(as(ADMIN, get("/api/v1/deployments/{id}/stream", id)).accept(MediaType.TEXT_EVENT_STREAM))

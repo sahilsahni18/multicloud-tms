@@ -16,7 +16,7 @@ Everything is built and proven locally first; the cloud is touched only on Day 3
 | 2 | 6 | Dockerfiles + full Compose stack, Kustomize manifests on kind, GitHub Actions CI | `docker compose up` works; app runs on kind; CI green | ✅ |
 | 3 | 7 | OpenTofu modules: AWS (VPC, EKS, ECR, RDS, Route 53, S3 + CloudFront), Azure (RG, AKS, ACR, MySQL Flexible, Traffic Manager, Static Web Apps) | `tofu plan` clean for both clouds | ✅ |
 | 3 | 8 | Apply both clouds, CD to 4 clusters, Traffic Manager failover | Killing a region fails over in < 2 min | ✅ failover 38 s (AWS→AWS), 45 s (AWS→Azure) |
-| 3 | 9 | Portal wired to the GitHub Actions provisioning workflow; demo rehearsal; `tofu destroy` | Portal deploy lands as COMPLETED in history | ⬜ |
+| 3 | 9 | Portal wired to the GitHub Actions provisioning workflow; demo rehearsal; `tofu destroy` | Portal deploy lands as COMPLETED in history | 🟨 code done, cloud test pending |
 
 ## Repository layout
 
@@ -26,7 +26,7 @@ Everything is built and proven locally first; the cloud is touched only on Day 3
 │   ├── src/main/java/com/trackflow/tms/
 │   │   ├── controller/     REST endpoints (@PreAuthorize on every method)
 │   │   ├── service/        business logic, TicketAccessPolicy, workflow, dashboard
-│   │   │   └── provisioning/   deployment runners (simulated now, GitHub Actions on Day 3)
+│   │   │   └── provisioning/   deployment runners (GitHub Actions in the cloud, simulated locally)
 │   │   ├── repository/     Spring Data JPA
 │   │   ├── entity/         JPA entities + enums
 │   │   ├── dto/  mapper/   API shapes
@@ -45,6 +45,7 @@ Everything is built and proven locally first; the cloud is touched only on Day 3
 ├── k8s/                    Kustomize base + overlays         (Step 6)
 ├── infra/                  OpenTofu modules + env stacks     (Step 7)
 ├── .github/workflows/      CI / CD / provisioning            (Steps 6, 8, 9)
+├── scripts/                kind, portal callback + SQL helpers
 ├── docs/                   HLD, LLD, API, diagrams
 └── docker-compose.yml      Local stack
 ```
@@ -107,7 +108,10 @@ Coverage report: `backend/target/site/jacoco/index.html`.
 | `REFRESH_COOKIE_SECURE`, `REFRESH_COOKIE_SAME_SITE` | `true`, `Strict` | |
 | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | unset | Creates the first admin where there is no demo data |
 | `AUTH_RATE_LIMIT_PER_MINUTE` | 10 | Login/register/refresh per IP |
-| `DEPLOY_RUNNER` | `SIMULATED` | `GITHUB_ACTIONS` once the provisioning workflow exists (Day 3) |
+| `DEPLOY_RUNNER` | `SIMULATED` | `GITHUB_ACTIONS` in the cloud (set by `deploy.yml` when the two secrets below exist) |
+| `DEPLOY_GITHUB_TOKEN` | unset | Fine-grained token, Actions read/write on this repo; lets the portal start `provision.yml` |
+| `DEPLOY_CALLBACK_URL` | unset | Public URL of the backend the workflow reports to (the Traffic Manager URL) |
+| `DEPLOY_GITHUB_REPOSITORY`, `DEPLOY_GITHUB_WORKFLOW`, `DEPLOY_GITHUB_REF` | this repo, `provision.yml`, `main` | |
 | `DEPLOY_SIMULATED_STEP_DELAY` | `3s` | Pause between simulated portal steps |
 | `DEPLOY_CALLBACK_SECRET` | unset | HMAC key shared with the provisioning workflow; unset disables callbacks |
 | `DEPLOY_APPLY_ENVIRONMENTS` | `DEV` | Environments allowed to APPLY; others are PLAN-only |
@@ -120,6 +124,36 @@ Demo users (password `Password@123`):
 | pm@trackflow.dev | PROJECT_MANAGER |
 | dev@trackflow.dev, dev2@trackflow.dev | DEVELOPER |
 | user@trackflow.dev | USER |
+
+## Deployment Portal (Step 9)
+
+Admin → **Deployments** → **New deployment**. In the cloud the portal runs on real GitHub Actions:
+
+1. The backend stores the request as `QUEUED` and calls the GitHub API (`workflow_dispatch` on [`provision.yml`](.github/workflows/provision.yml)).
+2. The workflow reports every step back to `POST /api/v1/deployments/{id}/events`, signed with HMAC-SHA256 ([`scripts/report-deployment.sh`](scripts/report-deployment.sh)). The portal shows each step live and links to the pipeline run.
+
+| Action | What really happens | Time | Cost |
+|---|---|---|---|
+| **APPLY** (DEV) | A new environment on the region's existing EKS/AKS cluster: its own namespace, its own database on RDS / MySQL Flexible (Flyway migrates it), backend + SPA, and its own URL `http://tms-dev-<id>.<ip>.nip.io` | 3–5 min | none extra |
+| **PLAN** (QA, PROD) | `tofu plan` of the full stack (network, clusters, database, registry) for that environment and region, from an empty state. Nothing is created | 2–3 min | free |
+| **Destroy** | Drops the environment's database and deletes its namespace | 1 min | |
+
+Why not a whole new cluster per click: a new EKS/AKS cluster and database take 20+ minutes, need more quota than new AWS/Azure accounts have, and cost credits. The full-stack path is already proven by the Cloud infrastructure workflow and is what PLAN shows.
+
+One-time setup (already done for this repo):
+
+- Repository secret `DEPLOY_CALLBACK_SECRET`: random, `openssl rand -hex 32`.
+- Repository secret `DEPLOY_GITHUB_TOKEN`: fine-grained personal access token, only this repository, permission **Actions: Read and write**.
+- Then run **Deploy to cloud**; it switches the backend to `GITHUB_ACTIONS`. Without the token the portal stays on the simulated runner.
+
+## Demo script (15 minutes)
+
+1. **Architecture (2 min)**: React + Spring Boot + MySQL, 4 clusters in 2 clouds, one Traffic Manager URL, OpenTofu + GitHub Actions with OIDC (no stored cloud keys).
+2. **Ticket lifecycle (5 min)** on `http://trackflow-dev-sahil.trafficmanager.net` (password `Password@123`):
+   `user@` raises a CRITICAL bug → `pm@` assigns it to `dev@` → `dev@` moves it to In Review and comments → `pm@` closes it; show history, dashboard, Kanban board.
+3. **Deployment Portal (4 min)** as `admin@`: APPLY AWS us-east-1 DEV → watch the steps → open the new environment's URL and log in. Then PLAN Azure koreacentral PROD (type PROD) → show the real `tofu plan` summary. Destroy the DEV environment.
+4. **Failover (3 min)**: Azure portal → Traffic Manager `trackflow-dev-api`. Scale the us-east-1 backend to 0 (`kubectl -n trackflow scale deploy backend --replicas=0`) → the endpoint turns Degraded and the same URL is served by us-west-2 within about 40 s. Scale back to 2.
+5. **Q&A (1 min)**: security (JWT rotation, roles, HMAC callbacks), cost (nightly destroy, `KEEP_UP`).
 
 ## Docs
 

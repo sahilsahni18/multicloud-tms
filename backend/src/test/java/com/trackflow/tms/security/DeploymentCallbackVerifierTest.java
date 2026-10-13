@@ -22,7 +22,7 @@ class DeploymentCallbackVerifierTest {
 
     private DeploymentCallbackVerifier verifier(String secret) {
         return new DeploymentCallbackVerifier(new DeploymentProperties(RunnerType.GITHUB_ACTIONS, Duration.ZERO,
-                secret, Duration.ofMinutes(5), Set.of(DeploymentEnvironment.DEV), Map.of()), clock);
+                secret, Duration.ofMinutes(5), Set.of(DeploymentEnvironment.DEV), Map.of(), null), clock);
     }
 
     @Test

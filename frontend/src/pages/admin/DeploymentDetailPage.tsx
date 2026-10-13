@@ -14,6 +14,23 @@ import { colors } from '../../theme';
 import { formatDateTime, humanize } from '../../utils/format';
 import { stepStates, type StepState } from './deploymentSteps';
 
+// Makes the environment URL in a step message (e.g. "Environment ready: http://…") clickable.
+function Linkified({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(https?:\/\/[^\s)]+)/).map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <Link key={i} href={part} target="_blank" rel="noreferrer">
+            {part}
+          </Link>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 const STEP_TEXT: Partial<Record<DeploymentStatus, string>> = {
   QUEUED: 'Queued',
   NETWORK_CREATED: 'Network created',
@@ -121,7 +138,7 @@ export default function DeploymentDetailPage() {
               </Box>
               {step.message && (
                 <Typography variant="body2" color={step.state === 'failed' ? 'error' : 'text.secondary'}>
-                  {step.message}
+                  <Linkified text={step.message} />
                 </Typography>
               )}
             </Box>
@@ -143,7 +160,7 @@ export default function DeploymentDetailPage() {
       <ConfirmDialog
         open={confirmDestroy}
         title="Destroy this environment?"
-        message={`Runs tofu destroy for ${d.environment} in ${d.region}. Every resource it created is deleted.`}
+        message={`Tears down ${d.environment} in ${d.region}: every resource this deployment created is deleted.`}
         confirmLabel="Destroy"
         danger
         busy={destroyState.isLoading}

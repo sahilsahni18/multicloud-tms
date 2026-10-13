@@ -1,0 +1,52 @@
+# A Deployment Portal environment: one copy of the app in its own namespace on
+# an existing cluster, with its own database and hostname. Rendered by
+# .github/workflows/provision.yml, which per deployment:
+#   1. kustomize edit set namespace tms-<env>-<id>
+#   2. overwrites env-patch.yaml (DB URL, allowed origin, cloud, region)
+#   3. replaces portal.example.invalid with the environment's hostname
+#   4. pins the images to the ones the cluster's main app is running
+# Small on purpose: it shares a node with the main app.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tms-portal-placeholder
+
+resources:
+  - namespace.yaml
+  - ../../base
+  - ../../frontend
+
+images:
+  - name: trackflow-backend
+    newName: trackflow-backend
+    newTag: set-by-provision-workflow
+  - name: trackflow-frontend
+    newName: trackflow-frontend
+    newTag: set-by-provision-workflow
+
+patches:
+  - path: env-patch.yaml
+  - path: single-replica.yaml
+  - target:
+      kind: Ingress
+    patch: |-
+      - op: add
+        path: /spec/rules/0/host
+        value: portal.example.invalid
+  # One replica each, so no autoscaler or disruption budgets.
+  - target:
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: ignored
+  - target:
+      kind: PodDisruptionBudget
+    patch: |-
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: ignored

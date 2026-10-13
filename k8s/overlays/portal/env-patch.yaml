@@ -1,0 +1,13 @@
+# Overwritten by the provision workflow for each environment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  SPRING_PROFILES_ACTIVE: cloud,demo-data
+  DB_URL: jdbc:mysql://CHANGE-ME:3306/trackflow_portal
+  CORS_ALLOWED_ORIGINS: http://portal.example.invalid
+  APP_CLOUD: unknown
+  APP_REGION: unknown
+  REFRESH_COOKIE_SECURE: "false"
+  DB_POOL_SIZE: "5"

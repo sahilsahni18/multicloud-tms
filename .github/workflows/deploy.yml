@@ -219,6 +219,11 @@ jobs:
         env:
           APP_URL: ${{ needs.context.outputs.app_url }}
           SWA_URL: ${{ needs.context.outputs.swa_url }}
+          # Deployment Portal on real GitHub Actions (provision.yml) when both
+          # secrets exist; otherwise it stays on the simulated runner.
+          DEPLOY_GITHUB_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+          DEPLOY_CALLBACK_SECRET: ${{ secrets.DEPLOY_CALLBACK_SECRET }}
+          DEPLOY_CALLBACK_URL: http://${{ vars.TM_DNS_NAME }}.trafficmanager.net
         run: |
           if [ "${{ matrix.cloud }}" = aws ]; then
             aws s3 cp "$AWS_STATE" state.json --only-show-errors
@@ -235,6 +240,8 @@ jobs:
           # Browsers drop Secure cookies on plain http, so the refresh cookie is
           # Secure only when the app is served over https (CloudFront).
           secure=$([ "${APP_URL#https://}" != "$APP_URL" ] && echo true || echo false)
+          runner=$([ -n "$DEPLOY_GITHUB_TOKEN" ] && [ -n "$DEPLOY_CALLBACK_SECRET" ] && echo GITHUB_ACTIONS || echo SIMULATED)
+          echo "Deployment Portal runner: $runner"
           printf '%s\n' \
             'apiVersion: v1' \
             'kind: ConfigMap' \
@@ -247,6 +254,8 @@ jobs:
             "  APP_CLOUD: ${{ matrix.cloud }}" \
             "  APP_REGION: ${{ matrix.region }}" \
             "  REFRESH_COOKIE_SECURE: \"$secure\"" \
+            "  DEPLOY_RUNNER: $runner" \
+            "  DEPLOY_CALLBACK_URL: \"$DEPLOY_CALLBACK_URL\"" \
             > k8s/overlays/cloud/cluster-patch.yaml
 
           kubectl apply -f k8s/overlays/cloud/namespace.yaml
@@ -254,6 +263,8 @@ jobs:
             --from-literal=DB_USERNAME="$db_user" \
             --from-literal=DB_PASSWORD="$db_password" \
             --from-literal=JWT_SECRET="$jwt" \
+            --from-literal=DEPLOY_GITHUB_TOKEN="$DEPLOY_GITHUB_TOKEN" \
+            --from-literal=DEPLOY_CALLBACK_SECRET="$DEPLOY_CALLBACK_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Roll out backend and SPA
