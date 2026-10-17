@@ -82,7 +82,7 @@ export default function LoginPage() {
         </Button>
       </Box>
 
-      {import.meta.env.DEV && (
+      {(import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_ACCOUNTS === 'true') && (
         <Box sx={{ mt: 2.5, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
             Demo accounts (password <code>Password@123</code>)
