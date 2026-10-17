@@ -1,0 +1,24 @@
+# Render Blueprint: TrackFlow live demo as one free web service.
+# Render dashboard -> New -> Blueprint -> pick this repository.
+# The database is an external free MySQL (e.g. Aiven); enter its details
+# when Render asks for the values marked sync: false.
+services:
+  - type: web
+    name: trackflow
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      - key: DB_URL              # jdbc:mysql://<host>:<port>/defaultdb?sslMode=REQUIRED
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET          # openssl rand -base64 64
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false              # the service URL, e.g. https://trackflow.onrender.com

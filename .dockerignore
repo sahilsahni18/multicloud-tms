@@ -1,0 +1,15 @@
+# Build context for Dockerfile.render (repository root)
+.git
+.github
+.claude
+docs
+infra
+k8s
+scripts
+**/node_modules
+frontend/dist
+frontend/coverage
+backend/target
+**/*.log
+**/.env
+**/.env.*

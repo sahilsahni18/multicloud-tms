@@ -1,0 +1,23 @@
+name: Keep live demo warm
+
+# Free web services sleep after ~15 idle minutes and take a while to wake.
+# A health check every 10 minutes keeps the demo (and its database) awake.
+# Does nothing until the repository variable LIVE_DEMO_URL is set.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    if: vars.LIVE_DEMO_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Health check
+        env:
+          URL: ${{ vars.LIVE_DEMO_URL }}
+        run: curl -fsS --retry 3 --retry-delay 20 --max-time 120 "${URL%/}/actuator/health"
