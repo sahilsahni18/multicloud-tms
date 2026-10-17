@@ -35,7 +35,7 @@ A Jira-style ticket tracker (React, Spring Boot, MySQL) that ran **on AWS and Az
 
 ## Results
 
-All numbers below were measured on the live system in October 2026.
+All numbers below were measured on the live system.
 
 | Metric | Result | Target |
 |---|---|---|
@@ -295,7 +295,7 @@ Guard rails: only ADMIN can deploy, QA and Prod are plan-only, Prod needs the en
 
 Traffic Manager probes `/actuator/health` on all four clusters every 10 s. After 3 failed probes a cluster is marked Degraded and DNS (TTL 60 s) answers with the next healthy priority: **P1 us-east-1, P2 us-west-2, P3 eastasia, P4 koreacentral**. When the primary recovers, traffic returns to it automatically.
 
-| Test (10 Oct 2026) | Method | Result |
+| Test | Method | Result |
 |---|---|---|
 | Lose AWS us-east-1 | scale its backend to 0 | us-west-2 serving in **38 s** |
 | Lose both AWS regions | scale both backends to 0 | Azure serving in **45 s**, login works |
@@ -327,11 +327,11 @@ The original plan assumed paid cloud accounts. New free and student accounts blo
 | Item | Value |
 |---|---|
 | Running cost of the full system | about **$1.45/hour** (AWS about $1.33, Azure about $0.12), paid from free credits, $0 out of pocket |
-| Spend during the project | AWS $12.56 by 13 Oct (EKS $9.94, RDS $1.43, EC2 $1.09); Azure about ₹192 |
+| Spend during the project | AWS about $12.56 (EKS $9.94, RDS $1.43, EC2 $1.09); Azure about ₹192 |
 | Safety net | nightly destroy at 02:00 IST; `KEEP_UP=true` pauses it for reviews |
 | Teardown check | after every destroy, both accounts were checked directly for leftover clusters, servers, disks, IPs, NAT gateways and load balancers |
 
-**Lesson learned**: most of the AWS cost was the two EKS control planes. Kubernetes 1.33 moved to EKS extended support on 29 July 2026, which bills $0.60 per cluster per hour instead of $0.10. Setting `kubernetes_version = "1.34"` before an apply brings AWS down to about $0.35/hour.
+**Lesson learned**: most of the AWS cost was the two EKS control planes. Kubernetes 1.33 is in EKS extended support, which bills $0.60 per cluster per hour instead of $0.10. Setting `kubernetes_version = "1.34"` before an apply brings AWS down to about $0.35/hour.
 
 The cloud environment has been destroyed; the state storage and OIDC trust are kept so it can be rebuilt in about 40 minutes.
 
@@ -505,4 +505,4 @@ Everything was built and proven locally first; the cloud was touched only at the
 
 ## License
 
-[MIT](LICENSE) © 2026 Chetan Sahney
+[MIT](LICENSE) © Chetan Sahney
