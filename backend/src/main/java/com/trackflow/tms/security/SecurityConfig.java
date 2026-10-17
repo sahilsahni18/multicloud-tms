@@ -6,6 +6,7 @@ import jakarta.servlet.DispatcherType;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -45,7 +46,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService,
                                                    SecurityProblemHandler problems, AppProperties properties,
-                                                   Clock clock) throws Exception {
+                                                   Clock clock,
+                                                   @Value("${app.web.enabled:false}") boolean webAppEnabled)
+            throws Exception {
         http
                 // Bearer tokens are not sent automatically by browsers, so CSRF does not apply;
                 // the refresh cookie is SameSite and scoped to /api/v1/auth.
@@ -64,6 +67,9 @@ public class SecurityConfig {
                         // Pipeline callbacks carry an HMAC signature instead of a JWT.
                         .requestMatchers(HttpMethod.POST, "/api/v1/deployments/*/events").permitAll()
                         .requestMatchers(PUBLIC_DOCS_AND_PROBES).permitAll()
+                        // Static web app files (only when the backend serves the SPA itself).
+                        .requestMatchers(request -> webAppEnabled && "GET".equals(request.getMethod())
+                                && !request.getRequestURI().startsWith("/api/")).permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
 

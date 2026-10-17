@@ -1,0 +1,19 @@
+# Single free-tier instance (Render): the backend also serves the React app,
+# so the site and the API share one origin. Sized for 512 MB and a small CPU.
+# Secrets (DB_URL, DB_USERNAME, DB_PASSWORD, JWT_SECRET) come from env vars.
+
+server:
+  port: ${PORT:8080}
+  tomcat:
+    threads:
+      max: 20
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:3}
+      minimum-idle: 1
+
+app:
+  web:
+    enabled: true
