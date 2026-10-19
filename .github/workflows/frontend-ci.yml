@@ -53,6 +53,10 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
+      # Registry paths must be lowercase; the account name may not be.
+      - name: Image name
+        id: img
+        run: echo "name=${IMAGE,,}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -88,8 +92,8 @@ jobs:
           context: frontend
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:main
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+            ${{ steps.img.outputs.name }}:main
           cache-from: type=gha,scope=frontend
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
