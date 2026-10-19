@@ -45,7 +45,7 @@ function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => voi
       .catch(() => null);
     if (project) {
       close();
-      navigate(`/projects/${project.id}`);
+      void navigate(`/projects/${project.id}`);
     }
   }
 

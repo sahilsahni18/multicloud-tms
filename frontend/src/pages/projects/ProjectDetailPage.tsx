@@ -216,7 +216,7 @@ export default function ProjectDetailPage() {
         onClose={() => setConfirmDelete(false)}
         onConfirm={async () => {
           await deleteProject(project.id).unwrap().catch(() => undefined);
-          navigate('/projects');
+          void navigate('/projects');
         }}
       />
     </>

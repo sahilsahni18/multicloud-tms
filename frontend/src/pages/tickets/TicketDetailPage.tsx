@@ -201,7 +201,7 @@ export default function TicketDetailPage() {
         onClose={() => setConfirmDelete(false)}
         onConfirm={async () => {
           await deleteTicket(ticket.id).unwrap().catch(() => undefined);
-          navigate('/tickets');
+          void navigate('/tickets');
         }}
       />
     </>

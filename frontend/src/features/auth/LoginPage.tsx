@@ -34,7 +34,7 @@ export default function LoginPage() {
     try {
       await dispatch(login({ email: email.trim(), password })).unwrap();
       const from = (location.state as { from?: string } | null)?.from;
-      navigate(from && from !== '/login' ? from : '/', { replace: true });
+      void navigate(from && from !== '/login' ? from : '/', { replace: true });
     } catch (err) {
       setError(errorMessage(err, 'Sign in failed'));
     } finally {

@@ -59,7 +59,7 @@ export default function NewTicketDialog({ open, onClose, defaultProjectId }: Pro
     }).unwrap().catch(() => null);
     if (ticket) {
       close();
-      navigate(`/tickets/${ticket.id}`);
+      void navigate(`/tickets/${ticket.id}`);
     }
   }
 

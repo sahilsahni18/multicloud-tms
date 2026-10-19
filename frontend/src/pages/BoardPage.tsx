@@ -226,7 +226,7 @@ export default function BoardPage() {
               onDragLeave={() => setOverColumn((c) => (c === status ? null : c))}
               onDrop={(e) => {
                 e.preventDefault();
-                drop(status);
+                void drop(status);
               }}
               sx={{
                 bgcolor: overColumn === status ? colors.blueBg : colors.column,

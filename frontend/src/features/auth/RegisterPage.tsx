@@ -24,7 +24,7 @@ export default function RegisterPage() {
     setError(null);
     try {
       await dispatch(register({ ...form, email: form.email.trim() })).unwrap();
-      navigate('/', { replace: true });
+      void navigate('/', { replace: true });
     } catch (err) {
       setError(errorMessage(err, 'Could not create the account'));
     } finally {

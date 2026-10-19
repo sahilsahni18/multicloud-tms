@@ -11,7 +11,7 @@ import './index.css';
 import { theme } from './theme';
 
 // A refresh cookie from an earlier visit signs the user straight back in.
-store.dispatch(restoreSession());
+void store.dispatch(restoreSession());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

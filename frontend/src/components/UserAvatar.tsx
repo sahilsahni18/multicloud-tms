@@ -6,7 +6,7 @@ const PALETTE = ['#0C66E4', '#1F845A', '#6E5DC6', '#C9372C', '#A54800', '#227D9B
 
 function colorFor(name: string): string {
   let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+  for (const ch of name) hash = Math.trunc((hash * 31 + ch.charCodeAt(0)) % 2147483647);
   return PALETTE[Math.abs(hash) % PALETTE.length];
 }
 

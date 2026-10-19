@@ -88,7 +88,7 @@ export default function ProfilePage() {
               .catch(() => false);
             if (ok) {
               await signOut();
-              navigate('/login', { replace: true });
+              void navigate('/login', { replace: true });
             }
           }}
         >

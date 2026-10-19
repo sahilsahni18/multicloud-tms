@@ -59,7 +59,7 @@ function DeployForm() {
     })
       .unwrap()
       .catch(() => null);
-    if (result) navigate(`/admin/deployments/${result.deployment.id}`);
+    if (result) void navigate(`/admin/deployments/${result.deployment.id}`);
   }
 
   const clusterChoices = Array.from({ length: options.maxClusters - options.minClusters + 1 }, (_, i) => options.minClusters + i);

@@ -120,7 +120,7 @@ function CommentItem({ comment }: { comment: Comment }) {
                   color="text.secondary"
                   sx={{ fontWeight: 500 }}
                   onClick={() => {
-                    if (window.confirm('Delete this comment?')) remove({ id: comment.id, ticketId: comment.ticketId });
+                    if (window.confirm('Delete this comment?')) void remove({ id: comment.id, ticketId: comment.ticketId });
                   }}
                 >
                   Delete

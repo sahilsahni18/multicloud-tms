@@ -130,7 +130,7 @@ export default function AppLayout() {
             component="form"
             onSubmit={(e: React.FormEvent) => {
               e.preventDefault();
-              navigate(`/tickets?q=${encodeURIComponent(search.trim())}`);
+              void navigate(`/tickets?q=${encodeURIComponent(search.trim())}`);
             }}
             sx={{
               display: 'flex',
@@ -185,7 +185,7 @@ export default function AppLayout() {
                 key={item.path}
                 onClick={() => {
                   setMenuAnchor(null);
-                  navigate(item.path);
+                  void navigate(item.path);
                 }}
               >
                 {item.label}
@@ -196,7 +196,7 @@ export default function AppLayout() {
               onClick={async () => {
                 setMenuAnchor(null);
                 await signOut();
-                navigate('/login');
+                void navigate('/login');
               }}
             >
               Log out
