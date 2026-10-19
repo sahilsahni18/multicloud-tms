@@ -184,14 +184,15 @@ resource "aws_db_instance" "replica" {
   count    = var.enable_replicas ? 1 : 0
   provider = aws.standby
 
-  identifier             = "${local.name}-replica"
-  replicate_source_db    = module.rds.arn
-  instance_class         = "db.t4g.micro"
-  db_subnet_group_name   = aws_db_subnet_group.replica[0].name
-  vpc_security_group_ids = [aws_security_group.replica[0].id]
-  storage_encrypted      = true
-  publicly_accessible    = false
-  skip_final_snapshot    = true
+  identifier              = "${local.name}-replica"
+  replicate_source_db     = module.rds.arn
+  instance_class          = "db.t4g.micro"
+  db_subnet_group_name    = aws_db_subnet_group.replica[0].name
+  vpc_security_group_ids  = [aws_security_group.replica[0].id]
+  storage_encrypted       = true
+  publicly_accessible     = false
+  skip_final_snapshot     = true
+  backup_retention_period = 7
 }
 
 # ----------------------------------------------------------------- frontend --

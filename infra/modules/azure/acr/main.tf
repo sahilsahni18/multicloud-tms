@@ -16,4 +16,12 @@ resource "azurerm_container_registry" "this" {
   sku                 = var.sku
   admin_enabled       = false # CI pushes with OIDC, AKS pulls with its identity
   tags                = var.tags
+
+  # Basic/Standard registries cannot use private endpoints; access is limited
+  # by Entra ID (OIDC push, AKS kubelet identity pull), not by network.
+  public_network_access_enabled = true
+
+  identity {
+    type = "SystemAssigned"
+  }
 }
