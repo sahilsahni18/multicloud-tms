@@ -1,0 +1,67 @@
+name: SonarCloud
+
+# Static analysis of the whole repository (Java, TypeScript, Kubernetes,
+# OpenTofu, Dockerfiles) with test coverage from both test suites.
+# Settings live in sonar-project.properties. Inactive until the repository
+# secret SONAR_TOKEN exists (SonarCloud -> My Account -> Security).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: SonarCloud not connected yet
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::Add the SONAR_TOKEN repository secret to enable SonarCloud analysis."
+
+      - uses: actions/checkout@v7
+        if: env.SONAR_TOKEN != ''
+        with:
+          fetch-depth: 0 # full history for blame and new-code detection
+
+      - uses: actions/setup-java@v6
+        if: env.SONAR_TOKEN != ''
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-node@v7
+        if: env.SONAR_TOKEN != ''
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Backend tests and coverage
+        if: env.SONAR_TOKEN != ''
+        working-directory: backend
+        run: ./mvnw -B -ntp verify
+
+      - name: Frontend tests and coverage
+        if: env.SONAR_TOKEN != ''
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npx vitest run --coverage
+
+      - name: SonarCloud scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@v5
+        with:
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || 'chetansahney' }}
+            -Dsonar.host.url=https://sonarcloud.io
