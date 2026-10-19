@@ -23,6 +23,8 @@ jobs:
       - name: Render overlays
         run: |
           mkdir -p rendered
+          # The local overlay reads git-ignored secret files; render it with the examples.
+          for f in k8s/overlays/local/*.env.example; do cp "$f" "${f%.example}"; done
           for overlay in k8s/overlays/*/; do
             name=$(basename "$overlay")
             echo "Rendering $name"

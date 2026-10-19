@@ -41,6 +41,16 @@ if (-not $SkipBuild) {
 }
 
 Step 'Application'
+# Random dev credentials, generated once and kept out of Git.
+$secrets = Join-Path $root 'k8s/overlays/local'
+if (-not (Test-Path (Join-Path $secrets 'mysql-secrets.env'))) {
+    function New-Secret([int]$bytes) { $b = New-Object byte[] $bytes; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $b }
+    $pw = -join ((New-Secret 16) | ForEach-Object { $_.ToString('x2') })
+    $root_pw = -join ((New-Secret 16) | ForEach-Object { $_.ToString('x2') })
+    $jwt = [Convert]::ToBase64String((New-Secret 64))
+    "MYSQL_ROOT_PASSWORD=$root_pw`nMYSQL_DATABASE=trackflow`nMYSQL_USER=trackflow`nMYSQL_PASSWORD=$pw`n" | Set-Content -NoNewline -Encoding ascii (Join-Path $secrets 'mysql-secrets.env')
+    "DB_USERNAME=trackflow`nDB_PASSWORD=$pw`nJWT_SECRET=$jwt`n" | Set-Content -NoNewline -Encoding ascii (Join-Path $secrets 'backend-secrets.env')
+}
 kubectl apply -k "$root/k8s/overlays/local"; Check
 if (-not $SkipBuild) {
     # Same tag, new image: restart so the pods pick it up.

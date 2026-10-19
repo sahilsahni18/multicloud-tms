@@ -19,20 +19,16 @@ images:
     newName: trackflow-frontend
     newTag: local
 
-# DEV-ONLY credentials for the throwaway kind database. Cloud overlays get
-# their Secret from the CD pipeline (GitHub secrets), never from this repo.
+# DEV-ONLY credentials for the throwaway kind database, read from git-ignored
+# files that scripts/kind-up.* generates with random values (see the *.example
+# files). Cloud overlays get their Secret from the CD pipeline, never from Git.
 secretGenerator:
   - name: backend-secrets
-    literals:
-      - DB_USERNAME=trackflow
-      - DB_PASSWORD=trackflow_local
-      - JWT_SECRET=+w2sC+J0eNRQL4fuiDI7K0w8c1Wf2UZA/CqfNaSOK2uJBaJSyYYU0Fzsyxa09cPfYifkHUlySg0mLm13OOiHuw==
+    envs:
+      - backend-secrets.env
   - name: mysql-secrets
-    literals:
-      - MYSQL_ROOT_PASSWORD=root_local
-      - MYSQL_DATABASE=trackflow
-      - MYSQL_USER=trackflow
-      - MYSQL_PASSWORD=trackflow_local
+    envs:
+      - mysql-secrets.env
 
 patches:
   - target:

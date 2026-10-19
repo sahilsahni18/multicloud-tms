@@ -30,6 +30,21 @@ if ! $skip_build; then
 fi
 
 step "Application"
+# Random dev credentials, generated once and kept out of Git.
+secrets="$root/k8s/overlays/local"
+if [ ! -f "$secrets/mysql-secrets.env" ]; then
+  pw=$(openssl rand -hex 16)
+  printf 'MYSQL_ROOT_PASSWORD=%s
+MYSQL_DATABASE=trackflow
+MYSQL_USER=trackflow
+MYSQL_PASSWORD=%s
+'     "$(openssl rand -hex 16)" "$pw" > "$secrets/mysql-secrets.env"
+  printf 'DB_USERNAME=trackflow
+DB_PASSWORD=%s
+JWT_SECRET=%s
+'     "$pw" "$(openssl rand -base64 64 | tr -d '
+')" > "$secrets/backend-secrets.env"
+fi
 kubectl apply -k "$root/k8s/overlays/local"
 if ! $skip_build; then
   kubectl -n trackflow rollout restart deployment/backend deployment/frontend >/dev/null
