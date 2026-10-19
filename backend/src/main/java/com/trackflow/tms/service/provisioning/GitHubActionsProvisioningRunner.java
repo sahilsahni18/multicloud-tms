@@ -96,8 +96,16 @@ public class GitHubActionsProvisioningRunner implements ProvisioningRunner {
         inputs.put("region", run.region());
         inputs.put("environment", run.environment().name().toLowerCase(Locale.ROOT));
         inputs.put("cluster_count", String.valueOf(run.clusterCount()));
-        inputs.put("callback_url", callbackUrl.replaceAll("/+$", ""));
+        inputs.put("callback_url", stripTrailingSlashes(callbackUrl));
         return inputs;
+    }
+
+    static String stripTrailingSlashes(String url) {
+        int end = url.length();
+        while (end > 0 && url.charAt(end - 1) == '/') {
+            end--;
+        }
+        return url.substring(0, end);
     }
 
     private String missingSetting() {

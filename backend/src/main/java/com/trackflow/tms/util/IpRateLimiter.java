@@ -40,7 +40,7 @@ public class IpRateLimiter {
         Bucket bucket = buckets.get(key, k -> newBucket());
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
         if (probe.isConsumed()) {
-            return Decision.ALLOWED;
+            return Decision.PERMIT;
         }
         long waitNanos = probe.getNanosToWaitForRefill();
         return new Decision(false, Math.max(1, (waitNanos + 999_999_999) / 1_000_000_000));
@@ -54,7 +54,7 @@ public class IpRateLimiter {
     }
 
     public record Decision(boolean allowed, long retryAfterSeconds) {
-        static final Decision ALLOWED = new Decision(true, 0);
+        static final Decision PERMIT = new Decision(true, 0);
     }
 
     /** Lets Bucket4j read time from the injected Clock, so tests can move time. */
