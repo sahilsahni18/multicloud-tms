@@ -50,6 +50,14 @@ All numbers below were measured on the live system.
 
 ![Results at a glance](docs/images/results.png)
 
+### Quality and performance
+
+| Check | Result | Details |
+|---|---|---|
+| Static analysis (SonarQube) | 28 issues found, **0 open**: ratings **A / A / A** (reliability, security, maintainability) | [Sonar report](docs/quality/sonar-report.md) |
+| Design patterns | 30 patterns identified, with file references | [Design patterns](docs/design-patterns.md) |
+| Load test (k6, one 1 vCPU pod) | Failure point **380 → 600 req/s (+58%)**, last healthy load **340 → 540 req/s (+59%)** | [Load test report](docs/performance/load-test-report.md) |
+
 ---
 
 ## Architecture
