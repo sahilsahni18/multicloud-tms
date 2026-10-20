@@ -26,6 +26,7 @@ import com.trackflow.tms.repository.CommentRepository;
 import com.trackflow.tms.repository.ProjectRepository;
 import com.trackflow.tms.repository.TicketHistoryRepository;
 import com.trackflow.tms.repository.TicketRepository;
+import com.trackflow.tms.repository.TicketSummaryQuery;
 import com.trackflow.tms.repository.UserRepository;
 import com.trackflow.tms.security.AuthUser;
 import java.time.Clock;
@@ -56,6 +57,7 @@ public class TicketService {
     private static final Pattern TICKET_KEY = Pattern.compile("^([A-Z][A-Z0-9]{1,9})-(\\d{1,9})$");
 
     private final TicketRepository ticketRepository;
+    private final TicketSummaryQuery summaryQuery;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final TicketHistoryRepository historyRepository;
@@ -68,12 +70,11 @@ public class TicketService {
 
     @Transactional(readOnly = true)
     public PageResponse<TicketSummaryResponse> search(AuthUser user, TicketFilter filter, Pageable pageable) {
-        Page<Ticket> page = ticketRepository.findAll(
-                policy.visibleTo(user)
-                        .and(TicketSpecifications.matching(filter))
-                        .and(TicketSpecifications.orderedBy(pageable.getSort())),
+        Page<TicketSummaryResponse> page = summaryQuery.find(
+                policy.visibleTo(user).and(TicketSpecifications.matching(filter)),
+                TicketSpecifications.orderedBy(pageable.getSort()),
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()));
-        return PageResponse.of(page, mapper::toSummary);
+        return PageResponse.of(page, summary -> summary);
     }
 
     @Transactional(readOnly = true)
