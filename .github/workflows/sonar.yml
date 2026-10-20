@@ -63,5 +63,5 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v5
         with:
           args: >
-            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || 'chetansahney' }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || 'sahilsahni18' }}
             -Dsonar.host.url=https://sonarcloud.io

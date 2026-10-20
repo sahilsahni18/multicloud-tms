@@ -4,10 +4,10 @@ A Jira-style ticket tracker (React, Spring Boot, MySQL) that ran **on AWS and Az
 
 ![TrackFlow](docs/images/title.png)
 
-[![Backend CI](https://github.com/Chetansahney/multicloud-tms/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Chetansahney/multicloud-tms/actions/workflows/backend-ci.yml)
-[![Frontend CI](https://github.com/Chetansahney/multicloud-tms/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/Chetansahney/multicloud-tms/actions/workflows/frontend-ci.yml)
-[![Kubernetes manifests](https://github.com/Chetansahney/multicloud-tms/actions/workflows/k8s-ci.yml/badge.svg)](https://github.com/Chetansahney/multicloud-tms/actions/workflows/k8s-ci.yml)
-[![Infrastructure](https://github.com/Chetansahney/multicloud-tms/actions/workflows/infra-ci.yml/badge.svg)](https://github.com/Chetansahney/multicloud-tms/actions/workflows/infra-ci.yml)
+[![Backend CI](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/backend-ci.yml)
+[![Frontend CI](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/frontend-ci.yml)
+[![Kubernetes manifests](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/k8s-ci.yml/badge.svg)](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/k8s-ci.yml)
+[![Infrastructure](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/infra-ci.yml/badge.svg)](https://github.com/sahilsahni18/multicloud-tms/actions/workflows/infra-ci.yml)
 
 ---
 
