@@ -19,6 +19,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Tuple;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
@@ -41,6 +42,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -63,6 +65,7 @@ public class DashboardService {
     private final Clock clock;
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "dashboard", key = "#user.id + ':' + #projectId + ':' + #weeks")
     public DashboardResponse dashboard(AuthUser user, Long projectId, int weeks) {
         int period = Math.max(1, Math.min(MAX_WEEKS, weeks));
         Scope scope = user.hasRole(RoleName.ADMIN) ? Scope.GLOBAL
@@ -81,25 +84,20 @@ public class DashboardService {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("project").get("id"), projectId));
         }
 
-        Map<TicketStatus, Long> byStatus = countBy(spec, "status", TicketStatus.class);
-        Map<TicketPriority, Long> byPriority = countBy(spec, "priority", TicketPriority.class);
-        Map<TicketType, Long> byType = countBy(spec, "type", TicketType.class);
-
         Instant now = clock.instant();
         Instant weekAgo = now.minus(Duration.ofDays(7));
         LocalDate today = LocalDate.ofInstant(now, ZoneOffset.UTC);
-        Specification<Ticket> notClosed = (root, query, cb) -> cb.notEqual(root.get("status"), TicketStatus.CLOSED);
+
+        // One pass over the visible tickets instead of seven separate count queries.
+        Aggregate agg = aggregate(spec, today, weekAgo);
+        Map<TicketStatus, Long> byStatus = agg.byStatus;
+        Map<TicketPriority, Long> byPriority = agg.byPriority;
+        Map<TicketType, Long> byType = agg.byType;
 
         long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
         long closed = byStatus.get(TicketStatus.CLOSED);
-        Totals totals = new Totals(
-                total,
-                total - closed,
-                closed,
-                count(spec.and(notClosed).and((root, query, cb) -> cb.isNull(root.get("assignee")))),
-                count(spec.and(notClosed).and((root, query, cb) -> cb.lessThan(root.<LocalDate>get("dueDate"), today))),
-                count(spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.<Instant>get("createdAt"), weekAgo))),
-                count(spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.<Instant>get("closedAt"), weekAgo))));
+        Totals totals = new Totals(total, total - closed, closed,
+                agg.unassignedOpen, agg.overdueOpen, agg.createdLastWeek, agg.closedLastWeek);
 
         List<ProductivityRow> productivity = scope == Scope.PERSONAL ? List.of() : productivity(spec, period, now);
         List<ActivityResponse> recent = activityService.feed(user, projectId,
@@ -151,29 +149,64 @@ public class DashboardService {
         return result;
     }
 
-    private <E extends Enum<E>> Map<E, Long> countBy(Specification<Ticket> spec, String attribute, Class<E> type) {
+    /**
+     * Status, priority and type breakdowns plus the four headline counts in a single
+     * GROUP BY (at most 4 x 4 x 3 rows), folded in Java.
+     */
+    private Aggregate aggregate(Specification<Ticket> spec, LocalDate today, Instant weekAgo) {
         CriteriaBuilder cb = entityManager.getCriteriaBuilder();
         CriteriaQuery<Tuple> query = cb.createTupleQuery();
         Root<Ticket> root = query.from(Ticket.class);
-        Path<E> path = root.get(attribute);
-        query.multiselect(path, cb.count(root)).where(and(cb, spec.toPredicate(root, query, cb))).groupBy(path);
+        Path<TicketStatus> status = root.get("status");
+        Path<TicketPriority> priority = root.get("priority");
+        Path<TicketType> type = root.get("type");
+        Predicate open = cb.notEqual(status, TicketStatus.CLOSED);
+        query.multiselect(status, priority, type, cb.count(root),
+                        countIf(cb, cb.and(open, cb.isNull(root.get("assignee")))),
+                        countIf(cb, cb.and(open, cb.lessThan(root.<LocalDate>get("dueDate"), today))),
+                        countIf(cb, cb.greaterThanOrEqualTo(root.<Instant>get("createdAt"), weekAgo)),
+                        countIf(cb, cb.greaterThanOrEqualTo(root.<Instant>get("closedAt"), weekAgo)))
+                .where(and(cb, spec.toPredicate(root, query, cb)))
+                .groupBy(status, priority, type);
 
-        Map<E, Long> result = new EnumMap<>(type);
-        for (E value : type.getEnumConstants()) {
-            result.put(value, 0L);
-        }
+        Aggregate agg = new Aggregate();
         for (Tuple row : entityManager.createQuery(query).getResultList()) {
-            result.put(row.get(0, type), row.get(1, Long.class));
+            long n = number(row.get(3));
+            agg.byStatus.merge(row.get(0, TicketStatus.class), n, Long::sum);
+            agg.byPriority.merge(row.get(1, TicketPriority.class), n, Long::sum);
+            agg.byType.merge(row.get(2, TicketType.class), n, Long::sum);
+            agg.unassignedOpen += number(row.get(4));
+            agg.overdueOpen += number(row.get(5));
+            agg.createdLastWeek += number(row.get(6));
+            agg.closedLastWeek += number(row.get(7));
         }
-        return result;
+        return agg;
     }
 
-    private long count(Specification<Ticket> spec) {
-        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-        CriteriaQuery<Long> query = cb.createQuery(Long.class);
-        Root<Ticket> root = query.from(Ticket.class);
-        query.select(cb.count(root)).where(and(cb, spec.toPredicate(root, query, cb)));
-        return entityManager.createQuery(query).getSingleResult();
+    private static Expression<Integer> countIf(CriteriaBuilder cb, Predicate condition) {
+        return cb.sum(cb.<Integer>selectCase().when(condition, 1).otherwise(0));
+    }
+
+    private static long number(Object value) {
+        return value == null ? 0 : ((Number) value).longValue();
+    }
+
+    private static final class Aggregate {
+        private final Map<TicketStatus, Long> byStatus = zeros(TicketStatus.class);
+        private final Map<TicketPriority, Long> byPriority = zeros(TicketPriority.class);
+        private final Map<TicketType, Long> byType = zeros(TicketType.class);
+        private long unassignedOpen;
+        private long overdueOpen;
+        private long createdLastWeek;
+        private long closedLastWeek;
+
+        private static <E extends Enum<E>> Map<E, Long> zeros(Class<E> type) {
+            Map<E, Long> map = new EnumMap<>(type);
+            for (E value : type.getEnumConstants()) {
+                map.put(value, 0L);
+            }
+            return map;
+        }
     }
 
     private static Predicate and(CriteriaBuilder cb, Predicate... predicates) {
