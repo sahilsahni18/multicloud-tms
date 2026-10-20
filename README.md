@@ -513,4 +513,4 @@ Everything was built and proven locally first; the cloud was touched only at the
 
 ## License
 
-[MIT](LICENSE) © Chetan Sahney
+[MIT](LICENSE) © Sahil Sahney
