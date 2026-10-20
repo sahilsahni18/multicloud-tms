@@ -9,8 +9,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +21,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -65,8 +69,24 @@ public abstract class AbstractIntegrationTest {
     @Autowired
     protected ObjectMapper objectMapper;
 
-    @Autowired
+    /**
+     * For test setup and assertions that bypass the API. The application runs every
+     * statement in a transaction with autocommit off, so this template uses
+     * autocommit connections: each statement here is committed on its own.
+     */
     protected JdbcTemplate jdbc;
+
+    @Autowired
+    void initJdbc(DataSource dataSource) {
+        jdbc = new JdbcTemplate(new DelegatingDataSource(dataSource) {
+            @Override
+            public Connection getConnection() throws SQLException {
+                Connection connection = super.getConnection();
+                connection.setAutoCommit(true); // the pool resets it when the connection is returned
+                return connection;
+            }
+        });
+    }
 
     protected String json(Object body) throws Exception {
         return objectMapper.writeValueAsString(body);

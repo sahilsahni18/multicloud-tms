@@ -16,12 +16,17 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
+      # Every database call runs in a Spring transaction, so connections can start
+      # with autocommit off; Hibernate then skips the two "SET autocommit"
+      # round trips it would otherwise send around every transaction.
+      auto-commit: false
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate          # Flyway owns the schema; Hibernate only checks it
     properties:
       hibernate:
+        connection.provider_disables_autocommit: true
         jdbc.time_zone: UTC
         type.preferred_instant_jdbc_type: TIMESTAMP   # map Instant to DATETIME(6)
   flyway:
@@ -36,6 +41,13 @@ spring:
         max-page-size: 100
   jackson:
     default-property-inclusion: non_null
+  # Dashboards are summary numbers: a few seconds of staleness is invisible to users,
+  # and caching them per viewer removes most of their aggregate queries under load.
+  cache:
+    type: caffeine
+    cache-names: dashboard
+    caffeine:
+      spec: maximumSize=10000,expireAfterWrite=${DASHBOARD_CACHE_TTL:15s}
 
 server:
   port: 8080
